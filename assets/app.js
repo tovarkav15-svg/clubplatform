@@ -12,6 +12,15 @@
     set(k, v) { try { localStorage.setItem('fpc-' + k, JSON.stringify(v)); } catch (e) {} },
   };
   const doneSet = () => new Set(store.get('done', []));
+  /* ---------- доступ по коду ---------- */
+  const API = 'https://fpc-api.tovarkav15.workers.dev';
+  const BOT = 'prodrclubot';
+  const sess = store.get('session', null);
+  const isOwner = !!(sess && sess.role === 'owner');
+  const device = (() => { let d = store.get('device', ''); if (!d) { d = [...crypto.getRandomValues(new Uint8Array(16))].map((b) => b.toString(16).padStart(2, '0')).join(''); store.set('device', d); } return d; })();
+  const call = (path, opt = {}) => fetch(API + path, { ...opt, headers: { 'content-type': 'application/json', ...(sess ? { authorization: `Bearer ${sess.token}` } : {}), ...(opt.headers || {}) } })
+    .then(async (r) => { const j = await r.json().catch(() => ({})); if (r.status === 401 && sess) { store.set('session', null); location.reload(); } if (!r.ok) throw new Error(j.error || 'Ошибка сервера'); return j; });
+  window.FPC = { call, sess, isOwner, store };
   const toggleDone = (key) => { const s = doneSet(); s.has(key) ? s.delete(key) : s.add(key); store.set('done', [...s]); return s.has(key); };
 
   /* ---------- общие элементы ---------- */
@@ -22,11 +31,13 @@
     news: '<path d="M4 5h13v14a2 2 0 0 0 2 2H6a2 2 0 0 1-2-2zM17 9h3v10a2 2 0 0 1-2 2M8 9h5M8 13h5M8 17h3"/>',
     guides: '<path d="M4 4.5A1.5 1.5 0 0 1 5.5 3H20v15H5.5A1.5 1.5 0 0 0 4 19.5zM4 19.5A1.5 1.5 0 0 0 5.5 21H20M9 8h6"/>',
     support: '<path d="M4 5h16v11H9l-5 4zM9 9.5h6M9 12.5h4"/>',
+    edit: '<path d="M4 20h4L19 9l-4-4L4 16zM13.5 6.5l4 4"/>',
     arrow: '<path d="M7 17 17 7M9 7h8v8"/>',
   };
   const icon = (n) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS[n]}</svg>`;
   const NAV = [['index.html', 'home', 'Главная'], ['news.html', 'news', 'Новости'], ['guides.html', 'guides', 'Гайды'], ['support.html', 'support', 'Поддержка']];
-  const cur = { index: 'index.html', news: 'news.html', guides: 'guides.html', guide: 'guides.html', support: 'support.html' }[page];
+  const MENU = isOwner ? [...NAV, ['admin.html', 'edit', 'Кабинет']] : NAV;
+  const cur = { index: 'index.html', news: 'news.html', guides: 'guides.html', guide: 'guides.html', support: 'support.html', admin: 'admin.html' }[page];
 
   document.body.insertAdjacentHTML('afterbegin', `
   <svg style="position:absolute;width:0;height:0;overflow:hidden" aria-hidden="true" focusable="false"><defs>
@@ -37,11 +48,11 @@
   </defs></svg>
   <header class="top"><div class="wrap">
     <a class="logo" href="index.html" aria-label="F-Producers Club — платформа"><span>F-PRODUCERS<br>CLUB</span><svg class="px" viewBox="0 0 9 9" aria-hidden="true">${starRects()}</svg><small>платформа</small></a>
-    <nav class="menu" aria-label="Разделы">${NAV.map(([h, i, t]) => `<a href="${h}" class="${h === cur ? 'on' : ''}">${icon(i)}${t}</a>`).join('')}</nav>
+    <nav class="menu" aria-label="Разделы">${MENU.map(([h, i, t]) => `<a href="${h}" class="${h === cur ? 'on' : ''}">${icon(i)}${t}</a>`).join('')}</nav>
     <a class="site" href="${SITE}" target="_blank" rel="noopener">сайт клуба ↗</a>
   </div></header>`);
   document.body.insertAdjacentHTML('beforeend', `
-  <footer class="foot"><div class="wrap"><span class="mono">F-Producers Club · платформа для участников</span><span class="mono"><a href="https://t.me/${TG}" target="_blank" rel="noopener">@${TG}</a> · <a href="${SITE}" target="_blank" rel="noopener">сайт клуба</a></span></div></footer>
+  <footer class="foot"><div class="wrap"><span class="mono">F-Producers Club · платформа для участников</span><span class="mono"><a href="https://t.me/${TG}" target="_blank" rel="noopener">@${TG}</a> · <a href="${SITE}" target="_blank" rel="noopener">сайт клуба</a>${isOwner ? ' · <a href="admin.html">кабинет</a>' : ''}${sess ? ' · <a href="#" id="logout">выйти</a>' : ''}</span></div></footer>
   <nav class="tabbar" aria-label="Разделы">${NAV.map(([h, i, t]) => `<a href="${h}" class="${h === cur ? 'on' : ''}">${icon(i)}${t}</a>`).join('')}</nav>`);
 
   const reveal = () => {
@@ -51,7 +62,40 @@
     els.forEach((e) => io.observe(e));
   };
 
-  const load = (f) => fetch(`data/${f}.json?v=${Date.now() / 6e5 | 0}`).then((r) => { if (!r.ok) throw new Error(r.status); return r.json(); });
+  const load = (f) => call(`/api/data?f=${f}`);
+  const lo = $('#logout');
+  if (lo) lo.addEventListener('click', (e) => { e.preventDefault(); call('/api/logout', { method: 'POST' }).catch(() => {}).finally(() => { store.set('session', null); location.href = 'index.html'; }); });
+
+  /* ---------- экран входа ---------- */
+  const locked = ['index', 'news', 'guides', 'guide', 'admin'].includes(page) && !sess;
+  if (locked) {
+    $('main').innerHTML = `
+      <section class="phead fade"><span class="kick mono">платформа участников · F-Producers Club</span>
+        <h1>Вход по <span class="tag-box">коду</span><span class="cstar" aria-hidden="true"><svg><use href="#cs8"/></svg></span></h1>
+        <p>Гайды и новости клуба открываются по личному коду. Код выдаёт наш Telegram-бот после одобрения Артёма.</p></section>
+      <section class="sup">
+        <form class="card ask fade" id="login">
+          <h2>Твой код</h2><p>Код выглядит так: FP-XXXX-XXXX. Он работает максимум на двух устройствах.</p>
+          <div class="field"><label class="mono" for="code">код доступа</label><input id="code" autocomplete="one-time-code" autocapitalize="characters" spellcheck="false" placeholder="FP-XXXX-XXXX" maxlength="20" style="font-family:'JetBrains Mono',monospace;letter-spacing:.08em"></div>
+          <div class="actions"><button class="btn" type="submit">Войти <span class="ar">→</span></button><a class="btn ghost" href="https://t.me/${BOT}" target="_blank" rel="noopener">Получить код в боте</a></div>
+          <div class="ok" id="lerr" role="alert"></div>
+        </form>
+        <aside class="side"><div class="card how fade"><h3>Как получить доступ</h3><ol>
+          <li>Открой бота <a href="https://t.me/${BOT}" target="_blank" rel="noopener" style="border-bottom:1px solid currentColor">@${BOT}</a> и нажми «Старт».</li>
+          <li>Артём получит заявку и одобрит её — бот пришлёт тебе личный код.</li>
+          <li>Введи код здесь. Повторно код можно посмотреть в боте командой /start.</li></ol></div></aside>
+      </section>`;
+    const f = $('#login'), err = $('#lerr');
+    f.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const b = $('button[type=submit]', f); b.disabled = true; err.classList.remove('on');
+      try {
+        const r = await call('/api/login', { method: 'POST', body: JSON.stringify({ code: $('#code').value, device }) });
+        store.set('session', { token: r.token, role: r.role, name: r.name });
+        location.reload();
+      } catch (x) { err.textContent = x.message === 'Failed to fetch' ? 'Нет связи с сервером. Проверь интернет и попробуй ещё раз.' : x.message; err.classList.add('on'); b.disabled = false; }
+    });
+  }
   const fmtDate = (d) => new Date(d + 'T12:00:00').toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' });
   const lessonsTotal = (mods) => mods.reduce((n, m) => n + m.lessons.length, 0);
   const modDone = (m, done) => m.lessons.filter((_, i) => done.has(`${m.id}:${i}`)).length;
@@ -80,7 +124,7 @@
     </article>`;
 
   /* ---------- главная ---------- */
-  if (page === 'index') {
+  if (page === 'index' && !locked) {
     Promise.all([load('news'), load('guides')]).then(([news, mods]) => {
       const done = doneSet(), total = lessonsTotal(mods), n = done.size;
       const last = store.get('last', null);
@@ -103,7 +147,7 @@
   }
 
   /* ---------- новости ---------- */
-  if (page === 'news') {
+  if (page === 'news' && !locked) {
     const box = $('#feed');
     load('news').then((news) => {
       const sorted = [...news].sort((a, b) => (b.pin - a.pin) || b.date.localeCompare(a.date));
@@ -123,7 +167,7 @@
   }
 
   /* ---------- список гайдов ---------- */
-  if (page === 'guides') {
+  if (page === 'guides' && !locked) {
     const box = $('#mods');
     load('guides').then((mods) => {
       const done = doneSet();
@@ -140,7 +184,7 @@
   }
 
   /* ---------- урок ---------- */
-  if (page === 'guide') {
+  if (page === 'guide' && !locked) {
     const box = $('#reader');
     load('guides').then((mods) => {
       const q = new URLSearchParams(location.search);
@@ -163,6 +207,7 @@
             <div class="content">${les.content && les.content.length ? blocks(les.content) : `<div class="soon"><b>Материал готовится</b><p>Урок скоро появится на платформе — об этом напишем в новостях клуба. Есть вопрос по теме уже сейчас? Задай его Артёму.</p><a class="btn sm ghost" href="support.html?topic=${encodeURIComponent(m.title)}&about=${encodeURIComponent(les.title)}">Задать вопрос <span class="ar">→</span></a></div>`}</div>
             <div class="nav2">
               <button class="btn sm done-btn ${isDone ? 'is' : ''}" type="button">${isDone ? '✓ Пройдено' : 'Отметить пройденным'}</button>
+              ${isOwner ? `<a class="btn sm ghost" href="admin.html#m=${encodeURIComponent(m.id)}&l=${l}">✎ Редактировать</a>` : ''}
               ${next ? `<a class="btn sm ghost" href="guide.html?m=${encodeURIComponent(next.m.id)}&l=${next.l}">${next.m === m ? 'Следующий урок' : 'Следующий модуль'} <span class="ar">→</span></a>` : '<a class="btn sm ghost" href="guides.html">Все гайды</a>'}
             </div>
           </article>`;
