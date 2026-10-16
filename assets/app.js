@@ -55,10 +55,11 @@
   const fmtDate = (d) => new Date(d + 'T12:00:00').toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' });
   const lessonsTotal = (mods) => mods.reduce((n, m) => n + m.lessons.length, 0);
   const modDone = (m, done) => m.lessons.filter((_, i) => done.has(`${m.id}:${i}`)).length;
+  const plural = (n, one, few, many) => { const d = n % 10, h = n % 100; return d === 1 && h !== 11 ? one : d >= 2 && d <= 4 && (h < 12 || h > 14) ? few : many; };
   const fail = (box, what) => { box.innerHTML = `<div class="empty">Не удалось загрузить ${what}. Обнови страницу.</div>`; };
 
   /* ---------- блоки контента ---------- */
-  const inline = (t) => esc(t).replace(/\*\*(.+?)\*\*/g, '<b>$1</b>').replace(/\[(.+?)\]\((https?:\/\/[^\s)]+)\)/g, '<a href="$2" target="_blank" rel="noopener" style="border-bottom:1px solid currentColor">$1</a>');
+  const inline = (t) => esc(t).replace(/\*\*(.+?)\*\*/g, '<b>$1</b>').replace(/\[(.+?)\]\((https?:\/\/[^\s)]+|[\w-]+\.html[^\s)]*)\)/g, (_, txt, url) => `<a href="${url}"${/^https?:/.test(url) ? ' target="_blank" rel="noopener"' : ''} style="border-bottom:1px solid currentColor">${txt}</a>`);
   const blocks = (arr) => (arr || []).map((b) => {
     if (typeof b === 'string') return `<p>${inline(b)}</p>`;
     if (b.h) return `<h2>${inline(b.h)}</h2>`;
@@ -95,7 +96,7 @@
       $('#st-lessons').textContent = total;
       const sorted = [...news].sort((a, b) => (b.pin - a.pin) || b.date.localeCompare(a.date));
       $('#home-news').innerHTML = sorted.slice(0, 3).map((x) => `<a class="card hov post" href="news.html#${encodeURIComponent(x.id)}" style="display:block"><div class="meta mono"><span class="pill">${esc(x.tag)}</span><span>${fmtDate(x.date)}</span></div><h3>${esc(x.title)}</h3><div class="body">${inline(x.lead)}</div></a>`).join('');
-      $('#sc-news').textContent = `${news.length} ${news.length % 10 === 1 && news.length % 100 !== 11 ? 'запись' : 'записей'}`;
+      $('#sc-news').textContent = `${news.length} ${plural(news.length, 'запись', 'записи', 'записей')}`;
       $('#sc-guides').textContent = `${mods.length} модулей · ${total} уроков`;
       reveal();
     }).catch(() => fail($('#home-news'), 'данные'));
@@ -129,7 +130,7 @@
       box.innerHTML = mods.map((m, i) => {
         const d = modDone(m, done), p = Math.round(d / m.lessons.length * 100);
         return `<a class="card mod fade ${m.start ? 'start' : ''}" style="--d:${i % 6}" href="guide.html?m=${encodeURIComponent(m.id)}&l=0">
-          <div class="row mono"><span>${esc(m.num)}</span><span class="pill">${m.lessons.length} ${m.lessons.length === 1 ? 'урок' : m.lessons.length < 5 ? 'урока' : 'уроков'}</span></div>
+          <div class="row mono"><span>${esc(m.num)}</span><span class="pill">${m.lessons.length} ${plural(m.lessons.length, 'урок', 'урока', 'уроков')}</span></div>
           <h3>${esc(m.title)}</h3><p>${esc(m.desc)}</p>
           <div class="bar" style="--p:${p}%"><i></i></div>
           <div class="foot mono"><span>${d ? `пройдено ${d} из ${m.lessons.length}` : 'не начат'}</span><span>${p}%</span></div></a>`;
