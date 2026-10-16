@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Поддержка — вопрос Артёму · F-Producers Club</title>
+<meta name="description" content="Задай вопрос Артёму напрямую в Telegram.">
+<meta name="theme-color" content="#ffffff">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 9 9'%3E%3Cpath fill='%23172231' d='M4 0h1v3h4v1H8v1H7v1h1v2H7V7H6V6H5v1H4V6H3v1H2v1H1V6h1V5H1V4H0V3h4z'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@500;600;700;800&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/style.css?v=1">
+</head>
+<body data-page="support">
+<main class="wrap">
+  <section class="phead fade">
+    <span class="kick mono">раздел · 03</span>
+    <h1>Вопрос <span class="tag-box">Артёму</span><span class="cstar" aria-hidden="true"><svg><use href="#cs8"/></svg></span></h1>
+    <p>Застрял на уроке, не понимаешь, как применить гайд, или нужен совет по своему проекту — пиши напрямую.</p>
+  </section>
+
+  <section class="sup">
+    <div class="card ask fade">
+      <h2>Твой вопрос</h2>
+      <p>Опиши ситуацию конкретно: ниша, что уже сделал, где затык. Так ответ будет точнее.</p>
+      <div class="field"><label class="mono">тема</label><div class="chips" id="topics"></div></div>
+      <div class="field">
+        <label class="mono" for="q">вопрос</label>
+        <textarea id="q" rows="7" maxlength="1500" placeholder="Например: веду эксперта по фитнесу, 2 000 подписчиков, прогрев не даёт заявок. Что поменять в контент-плане?"></textarea>
+        <div class="count mono" id="cnt">0 / 1500</div>
+      </div>
+      <div class="actions">
+        <button class="btn" id="send" type="button">Отправить Артёму в Telegram <span class="ar">→</span></button>
+        <button class="btn ghost" id="copy" type="button">Скопировать вопрос</button>
+      </div>
+      <p class="note">Кнопка откроет чат с @fedonko в Telegram с уже вставленным текстом — останется нажать «Отправить». С сайта ничего не отправляется и не сохраняется на сервере.</p>
+      <div class="ok" id="ok" role="status"></div>
+    </div>
+
+    <aside class="side">
+      <div class="card who fade">
+        <span class="av">А<i></i></span>
+        <div><b>Артём · Федонко</b><span>основатель клуба · отвечает лично<br><a href="https://t.me/fedonko" target="_blank" rel="noopener" style="border-bottom:1px solid currentColor">@fedonko</a></span></div>
+      </div>
+      <div class="card how fade">
+        <h3>Как это работает</h3>
+        <ol>
+          <li>Выбери тему и опиши вопрос в форме.</li>
+          <li>Нажми «Отправить» — откроется Telegram с текстом.</li>
+          <li>Отправь сообщение — Артём ответит в личке.</li>
+        </ol>
+      </div>
+      <div class="card qa fade">
+        <details><summary>Куда уходит вопрос?<i>+</i></summary><p>Прямо в личные сообщения Артёму в Telegram. Без ботов и посредников.</p></details>
+        <details><summary>Можно спросить про свой проект?<i>+</i></summary><p>Да. Чем подробнее опишешь нишу, цифры и что уже пробовал, тем полезнее будет ответ.</p></details>
+        <details><summary>Telegram не открылся — что делать?<i>+</i></summary><p>Нажми «Скопировать вопрос», открой чат с @fedonko и вставь текст вручную.</p></details>
+      </div>
+    </aside>
+  </section>
+</main>
+<script src="assets/app.js?v=1"></script>
+</body>
+</html>
