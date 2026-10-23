@@ -23,6 +23,59 @@
   window.FPC = { call, sess, isOwner, store };
   const toggleDone = (key) => { const s = doneSet(); s.has(key) ? s.delete(key) : s.add(key); store.set('done', [...s]); return s.has(key); };
 
+  /* ---------- уведомления и окно подтверждения ---------- */
+  const toast = (msg) => {
+    let el = document.querySelector('.toast');
+    if (!el) { el = document.createElement('div'); el.className = 'toast'; el.setAttribute('role', 'status'); document.body.appendChild(el); }
+    el.textContent = msg; el.classList.remove('on'); void el.offsetWidth; el.classList.add('on');
+    clearTimeout(toast.t); toast.t = setTimeout(() => el.classList.remove('on'), 2600);
+  };
+  const confirmBox = ({ title, html, ok = 'Продолжить', cancel = 'Отмена' }) => new Promise((res) => {
+    const m = document.createElement('div');
+    m.className = 'modal';
+    m.innerHTML = `<div class="mbox" role="dialog" aria-modal="true" aria-labelledby="mtitle"><span class="mic" aria-hidden="true">!</span><h3 id="mtitle">${title}</h3><div class="mtx">${html}</div><div class="mact"><button class="btn" data-r="1" type="button">${ok}</button><button class="btn ghost" data-r="0" type="button">${cancel}</button></div></div>`;
+    const key = (e) => { if (e.key === 'Escape') done(false); };
+    const done = (v) => { m.classList.remove('on'); setTimeout(() => m.remove(), 350); document.removeEventListener('keydown', key); res(v); };
+    m.addEventListener('click', (e) => { const b = e.target.closest('[data-r]'); if (b) done(b.dataset.r === '1'); else if (e.target === m) done(false); });
+    document.addEventListener('keydown', key);
+    document.body.appendChild(m);
+    requestAnimationFrame(() => m.classList.add('on'));
+    m.querySelector('[data-r="1"]').focus();
+  });
+
+  /* ---------- избранное (хранится на сервере, копия — в браузере) ---------- */
+  const favs = {
+    list: store.get('favs', []),
+    has(k) { return this.list.includes(k); },
+    set(l) { this.list = Array.isArray(l) ? l : []; store.set('favs', this.list); },
+    async sync() { if (sess) { try { this.set(await call('/api/favs')); } catch (e) {} } return this.list; },
+    async toggle(k) {
+      const on = !this.has(k), before = this.list;
+      this.set(on ? [k, ...before.filter((x) => x !== k)] : before.filter((x) => x !== k));
+      try { this.set(await call('/api/favs', { method: 'POST', body: JSON.stringify({ key: k, on }) })); toast(on ? 'Добавлено в избранное' : 'Убрано из избранного'); }
+      catch (e) { this.set(before); toast('Не получилось сохранить — проверь интернет'); }
+      return this.has(k);
+    },
+  };
+  const favBtn = (k, cls = 'sfav') => `<button class="${cls} ${favs.has(k) ? 'is' : ''}" type="button" data-fav="${k}" aria-pressed="${favs.has(k)}" title="${favs.has(k) ? 'Убрать из избранного' : 'В избранное'}" aria-label="Избранное">${icon('bm')}</button>`;
+  const paintFavs = (root = document) => $$('[data-fav]', root).forEach((b) => { const on = favs.has(b.dataset.fav); b.classList.toggle('is', on); b.setAttribute('aria-pressed', on); b.title = on ? 'Убрать из избранного' : 'В избранное'; });
+  document.addEventListener('click', async (e) => {
+    const b = e.target.closest('[data-fav]');
+    if (!b) return;
+    e.preventDefault(); e.stopPropagation();
+    b.classList.toggle('is', !favs.has(b.dataset.fav));
+    await favs.toggle(b.dataset.fav);
+    paintFavs();
+    document.dispatchEvent(new CustomEvent('favs'));
+  });
+  const favList = (T, box) => {
+    if (!box) return;
+    const items = favs.list.map((k) => { const [ti, si] = k.split(':'); const t = T.find((x) => x.id === ti), s = t && t.steps.find((x) => x.id === si); return t && s ? { t, s, k } : null; }).filter(Boolean);
+    box.hidden = !items.length;
+    box.innerHTML = items.length ? `<div class="sec-t"><h2>Избранное</h2><span class="mono">${items.length} ${plural(items.length, 'шаг', 'шага', 'шагов')}</span></div>
+      <div class="favs">${items.map(({ t, s, k }) => `<div class="card favi"><a href="${stepUrl(t, s)}"><span class="mono">${esc(t.title)} · ${esc(s.num)}</span><b>${esc(s.title)}</b><small class="mono">${s.video ? '▶ видео' : 'видео скоро'}</small></a>${favBtn(k)}</div>`).join('')}</div>` : '';
+  };
+
   /* ---------- общие элементы ---------- */
   const STAR = ['....#....', '....#....', '...###...', '#########', '.###.###.', '..#####..', '..##.##..', '.##...##.', '.#.....#.'];
   const starRects = () => STAR.flatMap((r, y) => [...r].map((c, x) => (c === '#' ? `<rect x="${x}" y="${y}" width="1.02" height="1.02"/>` : ''))).join('');
@@ -31,6 +84,7 @@
     news: '<path d="M4 5h13v14a2 2 0 0 0 2 2H6a2 2 0 0 1-2-2zM17 9h3v10a2 2 0 0 1-2 2M8 9h5M8 13h5M8 17h3"/>',
     guides: '<path d="M4 4.5A1.5 1.5 0 0 1 5.5 3H20v15H5.5A1.5 1.5 0 0 0 4 19.5zM4 19.5A1.5 1.5 0 0 0 5.5 21H20M9 8h6"/>',
     support: '<path d="M4 5h16v11H9l-5 4zM9 9.5h6M9 12.5h4"/>',
+    bm: '<path d="M6.5 3.5h11v17l-5.5-4-5.5 4z"/>',
     edit: '<path d="M4 20h4L19 9l-4-4L4 16zM13.5 6.5l4 4"/>',
     arrow: '<path d="M7 17 17 7M9 7h8v8"/>',
   };
@@ -75,7 +129,7 @@
         <p>Гайды и новости клуба открываются по личному коду. Код выдаёт наш Telegram-бот после одобрения Артёма.</p></section>
       <section class="sup">
         <form class="card ask fade" id="login">
-          <h2>Твой код</h2><p>Код выглядит так: FP-XXXX-XXXX. Он работает максимум на двух устройствах.</p>
+          <h2>Твой код</h2><p>Код выглядит так: FP-XXXX-XXXX. Он одноразовый — привяжется к устройству, на котором ты его введёшь.</p>
           <div class="field"><label class="mono" for="code">код доступа</label><input id="code" autocomplete="one-time-code" autocapitalize="characters" spellcheck="false" placeholder="FP-XXXX-XXXX" maxlength="20" style="font-family:'JetBrains Mono',monospace;letter-spacing:.08em"></div>
           <div class="actions"><button class="btn" type="submit">Войти <span class="ar">→</span></button><a class="btn ghost" href="https://t.me/${BOT}" target="_blank" rel="noopener">Получить код в боте</a></div>
           <div class="ok" id="lerr" role="alert"></div>
@@ -83,12 +137,25 @@
         <aside class="side"><div class="card how fade"><h3>Как получить доступ</h3><ol>
           <li>Открой бота <a href="https://t.me/${BOT}" target="_blank" rel="noopener" style="border-bottom:1px solid currentColor">@${BOT}</a> и нажми «Старт».</li>
           <li>Артём получит заявку и одобрит её — бот пришлёт тебе личный код.</li>
-          <li>Введи код здесь. Повторно код можно посмотреть в боте командой /start.</li></ol></div></aside>
+          <li>Введи код здесь — на том устройстве и в том браузере, где будешь заниматься.</li></ol></div></aside>
       </section>`;
     const f = $('#login'), err = $('#lerr');
     f.addEventListener('submit', async (e) => {
       e.preventDefault();
-      const b = $('button[type=submit]', f); b.disabled = true; err.classList.remove('on');
+      const b = $('button[type=submit]', f);
+      if (!$('#code').value.trim()) { $('#code').focus(); return; }
+      err.classList.remove('on');
+      const tgApp = /Telegram/i.test(navigator.userAgent) || !!window.TelegramWebviewProxy;
+      const go = await confirmBox({
+        title: 'Код активируется один раз',
+        html: `<p>Код привяжется к <b>этому устройству и этому браузеру</b>. На другом телефоне, компьютере или в другом браузере он <b>не заработает</b>.</p>
+          <ul>${tgApp ? '<li><b>Сейчас ты во встроенном браузере Telegram.</b> Лучше открой платформу в Safari или Chrome и активируй код там.</li>' : '<li>Открой платформу там, где будешь заниматься, — не во встроенном браузере Telegram.</li>'}
+          <li>Не используй режим инкогнито и не очищай данные сайта — иначе вход пропадёт.</li></ul>
+          <p class="mono">Сменил устройство — напиши Артёму, он сбросит привязку.</p>`,
+        ok: 'Активировать здесь', cancel: 'Отмена',
+      });
+      if (!go) return;
+      b.disabled = true;
       try {
         const r = await call('/api/login', { method: 'POST', body: JSON.stringify({ code: $('#code').value, device }) });
         store.set('session', { token: r.token, role: r.role, name: r.name });
@@ -196,6 +263,10 @@
       $('#st-lessons').textContent = total;
       const ht = $('#home-tracks');
       if (ht) ht.innerHTML = T.map((t, i) => ncard(t, i, done)).join('');
+      const hf = $('#home-favs');
+      favList(T, hf);
+      favs.sync().then(() => favList(T, hf));
+      document.addEventListener('favs', () => favList(T, hf));
       const sorted = [...news].sort((a, b) => (b.pin - a.pin) || b.date.localeCompare(a.date));
       $('#home-news').innerHTML = sorted.slice(0, 3).map((x) => `<a class="card hov post" href="news.html#${encodeURIComponent(x.id)}" style="display:block"><div class="meta mono"><span class="pill">${esc(x.tag)}</span><span>${fmtDate(x.date)}</span></div><h3>${esc(x.title)}</h3><div class="body">${inline(x.lead)}</div></a>`).join('');
       $('#sc-news').textContent = `${news.length} ${plural(news.length, 'запись', 'записи', 'записей')}`;
@@ -230,6 +301,10 @@
     load('tracks').then((T) => {
       const done = doneSet();
       box.innerHTML = T.length ? T.map((t, i) => ncard(t, i, done)).join('') : '<div class="empty">Направления скоро появятся.</div>';
+      const fs = $('#favsec');
+      favList(T, fs);
+      favs.sync().then(() => favList(T, fs));
+      document.addEventListener('favs', () => favList(T, fs));
       reveal();
     }).catch(() => fail(box, 'обучение'));
   }
@@ -261,12 +336,13 @@
           <div class="sec-t"><h2>Шаги</h2><span class="mono">${n} ${plural(n, 'шаг', 'шага', 'шагов')}</span></div>
           ${n ? `<ol class="srows">${t.steps.map((s, k) => {
             const ok = done.has(`${t.id}:${s.id}`), tc = (s.timecodes || []).length;
-            return `<li><a class="card srow fade ${ok ? 'done' : ''}" style="--d:${k % 8}" href="${stepUrl(t, s)}">
+            return `<li class="sli fade" style="--d:${k % 8}"><a class="card srow ${ok ? 'done' : ''}" href="${stepUrl(t, s)}">
               <span class="snum">${esc(s.num)}</span>
               <span class="stx"><b>${esc(s.title)}</b><small class="mono">${s.video ? '▶ видео' : 'видео скоро'}${tc ? ` · ${tc} ${plural(tc, 'таймкод', 'таймкода', 'таймкодов')}` : ''}${s.notes && s.notes.length ? ' · конспект' : ''}</small></span>
-              <span class="sck" aria-label="${ok ? 'пройдено' : 'не пройдено'}">${ok ? '✓' : '→'}</span></a></li>`;
+              <span></span><span class="sck" aria-label="${ok ? 'пройдено' : 'не пройдено'}">${ok ? '✓' : '→'}</span></a>${favBtn(`${t.id}:${s.id}`)}</li>`;
           }).join('')}</ol>` : '<div class="empty">Шаги скоро появятся.</div>'}
         </section>`;
+      favs.sync().then(() => paintFavs(box));
       reveal();
     }).catch(() => fail(box, 'направление'));
   }
@@ -294,7 +370,7 @@
           <article class="card lesson">
             <div class="lhead">
               <div><span class="kick mono">шаг ${esc(s.num)} · ${esc(t.title)}</span><h1>${esc(s.title)}</h1></div>
-              <button class="dbtn ${isDone ? 'is' : ''}" type="button" aria-pressed="${isDone}" title="${isDone ? 'Снять отметку' : 'Отметить пройденным'}">✓</button>
+              <div class="lbtns">${favBtn(key, 'fbtn')}<button class="dbtn ${isDone ? 'is' : ''}" type="button" aria-pressed="${isDone}" title="${isDone ? 'Снять отметку' : 'Отметить пройденным'}">✓</button></div>
             </div>
             <div class="vbox">${v ? player(v) : `<div class="vsoon"><svg class="px" viewBox="0 0 9 9">${starRects()}</svg><b>Видео скоро появится</b><span class="mono">шаг ${esc(s.num)}</span></div>`}</div>
             <div class="tcs"><h3>Таймкоды</h3>${tcs.length
@@ -311,7 +387,15 @@
             </div>
             <p class="askq">Остался вопрос по шагу? <a href="support.html?topic=${encodeURIComponent(t.title)}&about=${encodeURIComponent(s.num + ' ' + s.title)}">Спросить Артёма →</a></p>
           </article>`;
-        const tog = () => { toggleDone(key); draw(); };
+        const tog = () => {
+          const on = toggleDone(key), dn = doneSet(), pp = pct(tDone(t, dn), t.steps.length);
+          const db = $('.dbtn', box), bb = $('.done-btn', box), ta = $(`.ltoc a[data-i="${si}"]`, box);
+          db.classList.toggle('is', on); db.setAttribute('aria-pressed', on); db.title = on ? 'Снять отметку' : 'Отметить пройденным';
+          bb.classList.toggle('is', on); bb.textContent = on ? '✓ Пройдено' : 'Отметить пройденным';
+          if (ta) { ta.classList.toggle('done', on); $('.ck', ta).textContent = on ? '✓' : ''; }
+          $('.ltoc .pbar', box).style.setProperty('--p', pp + '%'); $('.ltoc .tprog .mono', box).textContent = pp + '%';
+          if (on) toast('Шаг отмечен пройденным');
+        };
         $('.dbtn', box).addEventListener('click', tog);
         $('.done-btn', box).addEventListener('click', tog);
         $$('[data-i]', box).forEach((a) => a.addEventListener('click', (e) => {
@@ -325,6 +409,7 @@
         }));
       };
       draw();
+      favs.sync().then(() => paintFavs(box));
     }).catch(() => fail(box, 'урок'));
   }
 

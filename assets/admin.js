@@ -231,15 +231,15 @@
         <div class="aed-h"><span class="mono">участники · ${M.length} · открыт доступ ${cnt('approved')} · ждут ${cnt('pending')}</span><button class="btn sm ghost" type="button" data-act="reload">Обновить</button></div>
         ${M.length ? `<div class="lrows">${M.map((u) => `
           <div class="lrow mrow s-${esc(u.s)}">
-            <div class="lt"><b>${esc(u.n)}${u.un ? ` <span class="un">@${esc(u.un)}</span>` : ''}</b><small>${ST[u.s] || esc(u.s)}${u.c ? ` · <span class="mono">${esc(u.c)}</span>` : ''}${u.s === 'approved' ? ` · устройств ${u.d || 0} из 2` : ''}${u.at ? ` · ${new Date(u.at).toLocaleDateString('ru-RU')}` : ''}</small></div>
+            <div class="lt"><b>${esc(u.n)}${u.un ? ` <span class="un">@${esc(u.un)}</span>` : ''}</b><small>${ST[u.s] || esc(u.s)}${u.c ? ` · <span class="mono">${esc(u.c)}</span>` : ''}${u.s === 'approved' ? ` · ${u.d ? 'код активирован на устройстве' : 'код ещё не активирован'}` : ''}${u.at ? ` · ${new Date(u.at).toLocaleDateString('ru-RU')}` : ''}</small></div>
             <div class="mact">
               ${u.s === 'pending' ? `<button class="btn sm" data-ma="approve" data-id="${u.id}">Выдать код</button><button class="btn sm ghost" data-ma="deny" data-id="${u.id}">Отклонить</button>` : ''}
-              ${u.s === 'approved' ? `<button class="btn sm ghost" data-ma="reset" data-id="${u.id}" ${u.d ? '' : 'disabled'}>Сбросить устройства</button><button class="btn sm ghost danger" data-ma="revoke" data-id="${u.id}">Отозвать</button>` : ''}
+              ${u.s === 'approved' ? `<button class="btn sm ghost" data-ma="reset" data-id="${u.id}" ${u.d ? '' : 'disabled'}>Сбросить привязку</button><button class="btn sm ghost danger" data-ma="revoke" data-id="${u.id}">Отозвать</button>` : ''}
               ${u.s === 'denied' || u.s === 'revoked' ? `<button class="btn sm ghost" data-ma="approve" data-id="${u.id}">Выдать новый код</button>` : ''}
             </div></div>`).join('')}</div>` : '<div class="empty">Пока никто не запросил доступ. Отправь людям ссылку на бота.</div>'}
       </div>`;
   };
-  const MA = { approve: 'Выдать код? Бот сразу пришлёт его участнику.', deny: 'Отклонить заявку?', revoke: 'Отозвать доступ? Код перестанет работать на всех устройствах.', reset: 'Сбросить устройства? Участник сможет войти заново на двух новых устройствах.' };
+  const MA = { approve: 'Выдать код? Бот сразу пришлёт его участнику.', deny: 'Отклонить заявку?', revoke: 'Отозвать доступ? Код перестанет работать на всех устройствах.', reset: 'Сбросить привязку? Старое устройство потеряет доступ, а код можно будет один раз активировать на новом.' };
 
   /* ---------- события ---------- */
   adm.addEventListener('input', (e) => {

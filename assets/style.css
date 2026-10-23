@@ -411,3 +411,51 @@ main { animation: pagein .7s var(--ease) both; }
   .ncover .cstar { --s: 46px; }
 }
 @media (prefers-reduced-motion: reduce) { main { animation: none; } }
+
+/* ---------- избранное ---------- */
+.srow { grid-template-columns: 84px minmax(0, 1fr) 40px 44px; }
+.sli { position: relative; list-style: none; }
+.sfav, .fbtn { display: grid; place-items: center; width: 40px; height: 40px; border: 0; border-radius: 50%; background: #fff; color: var(--mute); box-shadow: inset 0 0 0 1.5px var(--line); cursor: pointer; transition: color .3s, background .3s, transform .5s var(--ease); }
+.sfav svg, .fbtn svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.8; transition: fill .3s; }
+.sfav:hover, .fbtn:hover { color: var(--navy); transform: scale(1.06); }
+.sfav.is, .fbtn.is { color: var(--navy); }
+.sfav.is svg, .fbtn.is svg { fill: currentColor; animation: bmpop .5s var(--ease); }
+@keyframes bmpop { 0% { transform: scale(.6); } 60% { transform: scale(1.15); } 100% { transform: none; } }
+.sli > .sfav { position: absolute; top: 50%; right: 76px; margin-top: -20px; z-index: 2; }
+.lbtns { display: flex; gap: 8px; flex: none; }
+.fbtn { width: 46px; height: 46px; }
+.favsec { padding-top: 0; padding-bottom: 46px; }
+.favs { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; }
+.favi { position: relative; }
+.favi a { display: grid; gap: 6px; padding: 18px 64px 18px 20px; }
+.favi a .mono { color: var(--mute); font-size: 11px; }
+.favi a b { font-family: var(--head); font-weight: 600; font-size: 17px; line-height: 1.25; letter-spacing: -.03em; }
+.favi a small { color: var(--mute); font-size: 11px; }
+.favi .sfav { position: absolute; top: 14px; right: 14px; }
+
+/* ---------- уведомление ---------- */
+.toast { position: fixed; left: 50%; bottom: 28px; z-index: 90; max-width: calc(100% - 32px); padding: 12px 18px; border-radius: 999px; background: var(--navy); color: #fff; font-size: 14px; box-shadow: 0 20px 40px -18px rgba(13,20,29,.6); opacity: 0; transform: translate(-50%, 20px); pointer-events: none; transition: opacity .35s, transform .5s var(--ease); }
+.toast.on { opacity: 1; transform: translate(-50%, 0); }
+
+/* ---------- окно подтверждения ---------- */
+.modal { position: fixed; inset: 0; z-index: 100; display: grid; place-items: center; padding: 16px; background: rgba(13,20,29,.42); -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); opacity: 0; transition: opacity .3s; }
+.modal.on { opacity: 1; }
+.mbox { width: min(480px, 100%); padding: 28px; border-radius: 24px; background: #fff; box-shadow: 0 40px 80px -30px rgba(0,0,0,.5); transform: translateY(16px) scale(.98); transition: transform .5s var(--ease); }
+.modal.on .mbox { transform: none; }
+.mic { display: grid; place-items: center; width: 46px; height: 46px; border-radius: 50%; background: var(--navy); color: #fff; font-family: var(--head); font-weight: 800; font-size: 22px; }
+.mbox h3 { margin-top: 16px; font-family: var(--head); font-weight: 700; font-size: 26px; line-height: 1.05; letter-spacing: -.045em; }
+.mtx { margin-top: 12px; color: var(--sub); font-size: 15px; line-height: 1.55; }
+.mtx > * + * { margin-top: 10px; }
+.mtx b { color: var(--ink); }
+.mtx ul { display: grid; gap: 8px; padding: 14px 16px 14px 34px; border-radius: 16px; background: var(--soft); font-size: 14px; }
+.mtx .mono { color: var(--mute); font-size: 11px; }
+.mact { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 22px; }
+
+@media (max-width: 700px) {
+  .srow { grid-template-columns: 52px minmax(0, 1fr) 36px 36px; }
+  .sli > .sfav { right: 58px; width: 36px; height: 36px; margin-top: -18px; }
+  .fbtn { width: 40px; height: 40px; }
+  .toast { bottom: 100px; }
+  .mbox { padding: 22px; }
+  .mact .btn { flex: 1 1 auto; justify-content: center; }
+}
