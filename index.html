@@ -10,21 +10,21 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@500;600;700;800&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="assets/style.css?v=2">
+<link rel="stylesheet" href="assets/style.css?v=3">
 </head>
 <body data-page="index">
 <main class="wrap">
   <section class="phead fade">
     <span class="kick mono">платформа участников · F-Producers Club</span>
     <h1>Всё для работы<br>продюсером — <span class="tag-box">здесь</span><span class="cstar" aria-hidden="true"><svg><use href="#cs8"/></svg></span></h1>
-    <p>Новости клуба, гайды по продюсированию и прямая связь с Артёмом — в одном месте.</p>
+    <p>Обучение по трём направлениям, новости клуба и прямая связь с Артёмом — в одном месте.</p>
   </section>
 
   <section class="sec hello fade">
     <div class="card cont" id="cont"><div><span class="mono">загрузка…</span></div></div>
     <div class="stats">
-      <div class="card stat"><b id="st-guides">—</b><span class="mono">модулей с гайдами</span></div>
-      <div class="card stat tint"><b id="st-lessons">—</b><span class="mono">уроков в программе</span></div>
+      <div class="card stat"><b id="st-guides">—</b><span class="mono">направления обучения</span></div>
+      <div class="card stat tint"><b id="st-lessons">—</b><span class="mono">шагов в программе</span></div>
       <div class="card stat tint"><b>1:1</b><span class="mono">вопрос Артёму напрямую</span></div>
       <div class="card stat"><b>24/7</b><span class="mono">доступ к материалам</span></div>
     </div>
@@ -39,7 +39,7 @@
       </a>
       <a class="card scard dark" href="guides.html">
         <span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4.5A1.5 1.5 0 0 1 5.5 3H20v15H5.5A1.5 1.5 0 0 0 4 19.5zM4 19.5A1.5 1.5 0 0 0 5.5 21H20M9 8h6"/></svg></span>
-        <span class="go">↗</span><h3>Гайды<br>и обучение</h3><p id="sc-guides">Модули от упаковки до команды</p>
+        <span class="go">↗</span><h3>Обучение</h3><p id="sc-guides">Продюсирование, инфобизнес, продажи в звонках</p>
       </a>
       <a class="card scard" href="support.html">
         <span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5h16v11H9l-5 4zM9 9.5h6M9 12.5h4"/></svg></span>
@@ -49,10 +49,15 @@
   </section>
 
   <section class="sec fade">
+    <div class="sec-t"><h2>Направления</h2><a href="guides.html">всё обучение</a></div>
+    <div class="ntracks" id="home-tracks"></div>
+  </section>
+
+  <section class="sec fade">
     <div class="sec-t"><h2>Последние новости</h2><a href="news.html">все новости</a></div>
     <div class="mini-feed" id="home-news"></div>
   </section>
 </main>
-<script src="assets/app.js?v=2"></script>
+<script src="assets/app.js?v=3"></script>
 </body>
 </html>

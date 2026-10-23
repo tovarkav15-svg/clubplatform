@@ -52,10 +52,26 @@
     });
     return out;
   };
+  const parseTC = (txt) => String(txt || '').split('\n').map((l) => l.trim()).filter(Boolean).map((l) => {
+    const m = l.match(/^(\d{1,2}(?::\d{1,2}){1,2})\s*[-–—|.:]?\s*(.*)$/);
+    return m ? { t: m[1], s: m[1].split(':').reduce((a, x) => a * 60 + (+x || 0), 0), label: m[2] || '' } : null;
+  }).filter(Boolean);
+  const tcText = (arr) => (arr || []).map((c) => `${c.t} ${c.label}`.trim()).join('\n');
+  const vidKind = (u) => {
+    u = String(u || '').trim();
+    if (!u) return 'видео не добавлено — на платформе будет «Видео скоро появится»';
+    if (/youtu\.?be/.test(u)) return '✓ YouTube';
+    if (/rutube\.ru/.test(u)) return '✓ Rutube';
+    if (/vk(video)?\.(com|ru)\/(video|clip)-?\d+_\d+/.test(u)) return '✓ VK Видео';
+    if (/kinescope\.io/.test(u)) return '✓ Kinescope';
+    if (/\.(mp4|webm|mov|m4v)(\?|#|$)/i.test(u)) return '✓ видеофайл';
+    if (/^https:\/\//.test(u)) return 'ссылка будет встроена как плеер (проверь на сайте)';
+    return '⚠ нужна ссылка, начинающаяся с https://';
+  };
   const HELP = `Пустая строка — новый абзац · <code>## Заголовок</code> · <code>- пункт списка</code> · <code>1. шаг</code> · <code>&gt; Важно | текст подсказки</code> · <code>video: ссылка YouTube/Rutube</code> · <code>img: ссылка на картинку</code> · <code>**жирный**</code> · <code>[текст](https://ссылка)</code>`;
 
   /* ---------- состояние ---------- */
-  const S = { data: {}, dirty: { guides: false, news: false }, tab: 'guides', m: 0, l: null, n: null, saving: false, members: null };
+  const S = { data: {}, dirty: { tracks: false, news: false }, tab: 'tracks', m: 0, l: null, n: null, saving: false, members: null };
   const today = () => new Date(Date.now() - new Date().getTimezoneOffset() * 6e4).toISOString().slice(0, 10);
   const uid = (p) => p + Date.now().toString(36) + Math.random().toString(36).slice(2, 5);
   const short = (num, i) => (String(num || '').split('·')[0].trim() || String(i).padStart(2, '0'));
@@ -64,17 +80,17 @@
   main.innerHTML = `
     <section class="phead"><span class="kick mono">кабинет владельца</span>
       <h1>Управление <span class="tag-box">платформой</span></h1>
-      <p>Добавляй, правь и удаляй гайды и новости, одобряй участников. После «Сохранить» изменения сразу видны всем.</p></section>
+      <p>Добавляй и правь направления, шаги, видео и новости, одобряй участников. После «Сохранить» изменения сразу видны всем.</p></section>
     <div class="ownbar">
       <div class="card who"><span class="av">А<i></i></span><div><b>@fedonko</b><span>владелец платформы</span></div></div>
-      <div class="filters" id="atabs"><button type="button" data-t="guides">Гайды</button><button type="button" data-t="news">Новости</button><button type="button" data-t="members">Участники</button></div>
+      <div class="filters" id="atabs"><button type="button" data-t="tracks">Обучение</button><button type="button" data-t="news">Новости</button><button type="button" data-t="members">Участники</button></div>
     </div>
     <section class="adm" id="adm"><div class="empty">Загружаем…</div></section>
     <div class="savebar" id="savebar"><span class="st"></span><button class="btn sm" id="save" type="button">Сохранить</button></div>`;
   const adm = $('#adm');
 
   const bar = () => {
-    const d = S.dirty.guides || S.dirty.news, sb = $('#savebar');
+    const d = S.dirty.tracks || S.dirty.news, sb = $('#savebar');
     sb.classList.toggle('dirty', d);
     sb.classList.toggle('show', d || S.saving || !!sb.dataset.msg);
     $('.st', sb).textContent = S.saving ? 'Сохраняем…' : sb.dataset.msg || (d ? 'Есть несохранённые изменения' : 'Всё сохранено');
@@ -84,12 +100,12 @@
     const sb = $('#savebar'); sb.dataset.msg = msg; sb.classList.toggle('err', !!err); bar();
     clearTimeout(flash.t); flash.t = setTimeout(() => { sb.dataset.msg = ''; sb.classList.remove('err'); bar(); }, 4000);
   };
-  window.addEventListener('beforeunload', (e) => { if (S.dirty.guides || S.dirty.news) { e.preventDefault(); e.returnValue = ''; } });
+  window.addEventListener('beforeunload', (e) => { if (S.dirty.tracks || S.dirty.news) { e.preventDefault(); e.returnValue = ''; } });
 
   const validate = () => {
-    for (const m of S.data.guides) {
-      if (!m.title.trim()) return 'У одного из модулей пустое название.';
-      if (m.lessons.some((x) => !x.title.trim())) return `В модуле «${m.title}» есть урок без названия.`;
+    for (const m of S.data.tracks) {
+      if (!m.title.trim()) return 'У одного из направлений пустое название.';
+      if (m.steps.some((x) => !x.title.trim())) return `В направлении «${m.title}» есть шаг без названия.`;
     }
     for (const n of S.data.news) {
       if (!n.title.trim()) return 'У одной из новостей пустой заголовок.';
@@ -102,7 +118,7 @@
     if (v) return flash(v, true);
     S.saving = true; bar();
     try {
-      for (const f of ['guides', 'news']) {
+      for (const f of ['tracks', 'news']) {
         if (!S.dirty[f]) continue;
         await F.call(`/api/data?f=${f}`, { method: 'PUT', body: JSON.stringify(S.data[f]) });
         S.dirty[f] = false;
@@ -114,7 +130,7 @@
   /* ---------- вкладки ---------- */
   const draw = () => {
     document.querySelectorAll('#atabs button').forEach((b) => b.classList.toggle('on', b.dataset.t === S.tab));
-    if (S.tab === 'guides') drawGuides();
+    if (S.tab === 'tracks') drawGuides();
     else if (S.tab === 'news') drawNews();
     else drawMembers();
     bar();
@@ -126,50 +142,53 @@
     <div class="it ${on ? 'on' : ''}"><button type="button" class="pick" data-pick="${i}"><span class="mono">${esc(num)}</span><b>${esc(title || 'Без названия')}</b></button>${extra || ''}</div>`;
 
   const drawGuides = () => {
-    const G = S.data.guides;
+    const G = S.data.tracks;
     if (S.m >= G.length) S.m = Math.max(0, G.length - 1);
     adm.innerHTML = `
-      <aside class="card alist"><span class="mono lab">модули · ${G.length}</span>
-        ${G.map((m, i) => listItem(i, i === S.m, short(m.num, i), m.title, `<span class="mv"><button type="button" class="ibtn" data-up="${i}" title="Выше" ${i ? '' : 'disabled'}>↑</button><button type="button" class="ibtn" data-down="${i}" title="Ниже" ${i < G.length - 1 ? '' : 'disabled'}>↓</button></span>`)).join('')}
-        <button class="btn sm ghost add" type="button" data-act="addm">+ Модуль</button>
+      <aside class="card alist"><span class="mono lab">направления · ${G.length}</span>
+        ${G.map((m, i) => listItem(i, i === S.m, String(i + 1).padStart(2, '0') + (m.main ? ' ★' : ''), m.title, `<span class="mv"><button type="button" class="ibtn" data-up="${i}" title="Выше" ${i ? '' : 'disabled'}>↑</button><button type="button" class="ibtn" data-down="${i}" title="Ниже" ${i < G.length - 1 ? '' : 'disabled'}>↓</button></span>`)).join('')}
+        <button class="btn sm ghost add" type="button" data-act="addm">+ Направление</button>
       </aside>
       <div class="card aed" id="aed"></div>`;
-    G.length ? (S.l === null ? drawModule() : drawLesson()) : ($('#aed').innerHTML = '<div class="empty">Модулей пока нет. Нажми «+ Модуль».</div>');
+    G.length ? (S.l === null ? drawModule() : drawLesson()) : ($('#aed').innerHTML = '<div class="empty">Направлений пока нет. Нажми «+ Направление».</div>');
   };
 
   const drawModule = () => {
-    const m = S.data.guides[S.m];
+    const m = S.data.tracks[S.m];
     $('#aed').innerHTML = `
-      <div class="aed-h"><span class="mono">модуль</span><a class="btn sm ghost" href="guide.html?m=${encodeURIComponent(m.id)}&l=0" target="_blank" rel="noopener">Открыть на сайте ↗</a></div>
-      <div class="arow">
-        <div class="field"><label class="mono">название</label><input data-k="title" value="${esc(m.title)}"></div>
-        <div class="field"><label class="mono">подпись над названием</label><input data-k="num" value="${esc(m.num)}" placeholder="например, 09 · модуль"></div>
-      </div>
-      <div class="field"><label class="mono">описание</label><textarea data-k="desc" rows="2" style="min-height:0">${esc(m.desc)}</textarea></div>
-      <label class="chk"><input type="checkbox" data-k="start" ${m.start ? 'checked' : ''}> Выделить тёмной карточкой</label>
-      <h3 class="sub-h">Уроки · ${m.lessons.length}</h3>
-      <div class="lrows">${m.lessons.length ? m.lessons.map((x, i) => `
-        <div class="lrow"><span class="mono">${i + 1}</span>
-          <button type="button" class="lt" data-open="${i}"><b>${esc(x.title || 'Без названия')}</b><small>${x.content && x.content.length ? 'есть материал' : 'пометка «материал готовится»'}</small></button>
+      <div class="aed-h"><span class="mono">направление</span><a class="btn sm ghost" href="track.html?t=${encodeURIComponent(m.id)}" target="_blank" rel="noopener">Открыть на сайте ↗</a></div>
+      <div class="field"><label class="mono">название</label><input data-k="title" value="${esc(m.title)}"></div>
+      <div class="field"><label class="mono">описание — видно на карточке</label><textarea data-k="desc" rows="2" style="min-height:0">${esc(m.desc)}</textarea></div>
+      <div class="field"><label class="mono">метки на обложке — через запятую, до 4</label><input data-k="tags" value="${esc((m.tags || []).join(', '))}" placeholder="профиль, клиенты, созвоны, запуск"></div>
+      <label class="chk"><input type="checkbox" data-k="main" ${m.main ? 'checked' : ''}> Главное направление (большая тёмная карточка)</label>
+      <h3 class="sub-h">Шаги · ${m.steps.length}</h3>
+      <div class="lrows">${m.steps.length ? m.steps.map((x, i) => `
+        <div class="lrow"><span class="mono">${esc(x.num || i + 1)}</span>
+          <button type="button" class="lt" data-open="${i}"><b>${esc(x.title || 'Без названия')}</b><small>${x.video ? 'видео ✓' : 'без видео'} · таймкодов ${(x.timecodes || []).length}${x.notes && x.notes.length ? ' · конспект' : ''}</small></button>
           <button type="button" class="ibtn" data-lup="${i}" title="Выше" ${i ? '' : 'disabled'}>↑</button>
-          <button type="button" class="ibtn" data-ldown="${i}" title="Ниже" ${i < m.lessons.length - 1 ? '' : 'disabled'}>↓</button>
-          <button type="button" class="ibtn del" data-ldel="${i}" title="Удалить">✕</button></div>`).join('') : '<div class="empty" style="padding:22px">Уроков пока нет.</div>'}</div>
-      <div class="actions"><button class="btn sm" type="button" data-act="addl">+ Урок</button><button class="btn sm ghost danger" type="button" data-act="delm">Удалить модуль</button></div>`;
+          <button type="button" class="ibtn" data-ldown="${i}" title="Ниже" ${i < m.steps.length - 1 ? '' : 'disabled'}>↓</button>
+          <button type="button" class="ibtn del" data-ldel="${i}" title="Удалить">✕</button></div>`).join('') : '<div class="empty" style="padding:22px">Шагов пока нет.</div>'}</div>
+      <div class="actions"><button class="btn sm" type="button" data-act="addl">+ Шаг</button><button class="btn sm ghost danger" type="button" data-act="delm">Удалить направление</button></div>`;
   };
 
   const drawLesson = () => {
-    const m = S.data.guides[S.m], les = m.lessons[S.l];
-    if (!les) { S.l = null; return drawModule(); }
+    const m = S.data.tracks[S.m], st = m.steps[S.l];
+    if (!st) { S.l = null; return drawModule(); }
     $('#aed').innerHTML = `
-      <div class="aed-h"><button class="btn sm ghost" type="button" data-act="back">← ${esc(m.title)}</button><a class="btn sm ghost" href="guide.html?m=${encodeURIComponent(m.id)}&l=${S.l}" target="_blank" rel="noopener">Открыть на сайте ↗</a></div>
-      <div class="arow">
-        <div class="field"><label class="mono">название урока</label><input data-lk="title" value="${esc(les.title)}"></div>
-        <div class="field"><label class="mono">длительность</label><input data-lk="time" value="${esc(les.time || '')}" placeholder="например, 10 мин"></div>
+      <div class="aed-h"><button class="btn sm ghost" type="button" data-act="back">← ${esc(m.title)}</button><a class="btn sm ghost" href="guide.html?t=${encodeURIComponent(m.id)}&s=${encodeURIComponent(st.id)}" target="_blank" rel="noopener">Открыть на сайте ↗</a></div>
+      <div class="arow" style="grid-template-columns:120px 1fr">
+        <div class="field"><label class="mono">номер</label><input data-lk="num" value="${esc(st.num || '')}" placeholder="1.1"></div>
+        <div class="field"><label class="mono">название шага</label><input data-lk="title" value="${esc(st.title)}"></div>
       </div>
-      <div class="field"><label class="mono">материал урока</label>
-        <textarea data-lk="content" rows="18" placeholder="Пусто — на сайте будет пометка «Материал готовится»">${esc(toText(les.content))}</textarea>
+      <div class="field"><label class="mono">ссылка на видео</label><input data-lk="video" value="${esc(st.video || '')}" placeholder="https://youtu.be/… · rutube.ru/video/… · vkvideo.ru/video-…">
+        <div class="help" id="vkind">${esc(vidKind(st.video))}</div></div>
+      <div class="field"><label class="mono">таймкоды — каждый с новой строки</label>
+        <textarea data-lk="timecodes" rows="8" placeholder="0:00 Вступление&#10;3:15 Что такое продюсирование&#10;12:40 Кто такой продюсер">${esc(tcText(st.timecodes))}</textarea>
+        <div class="help" id="tcinfo">Распознано таймкодов: ${(st.timecodes || []).length}. Формат: <code>0:00 Название</code> или <code>1:02:30 Название</code> — на сайте по клику видео перемотается.</div></div>
+      <div class="field"><label class="mono">конспект под видео (необязательно)</label>
+        <textarea data-lk="notes" rows="8" placeholder="Пусто — под видео будут только таймкоды">${esc(toText(st.notes))}</textarea>
         <div class="help">${HELP}</div></div>
-      <div class="actions"><button class="btn sm ghost danger" type="button" data-act="dell">Удалить урок</button></div>`;
+      <div class="actions"><button class="btn sm ghost danger" type="button" data-act="dell">Удалить шаг</button></div>`;
   };
 
   /* ---------- новости ---------- */
@@ -226,15 +245,18 @@
   adm.addEventListener('input', (e) => {
     const el = e.target, val = el.type === 'checkbox' ? el.checked : el.value;
     if (el.dataset.k) {
-      const m = S.data.guides[S.m];
-      if (el.dataset.k === 'start') { if (val) m.start = true; else delete m.start; } else m[el.dataset.k] = val;
-      dirty('guides');
+      const m = S.data.tracks[S.m], k = el.dataset.k;
+      if (k === 'main') { if (val) m.main = true; else delete m.main; }
+      else if (k === 'tags') m.tags = val.split(',').map((x) => x.trim()).filter(Boolean).slice(0, 4);
+      else m[k] = val;
+      dirty('tracks');
     } else if (el.dataset.lk) {
-      const les = S.data.guides[S.m].lessons[S.l], k = el.dataset.lk;
-      if (k === 'content') { const b = fromText(val); les.content = b.length ? b : null; }
-      else if (k === 'time' && !val.trim()) delete les.time;
-      else les[k] = val;
-      dirty('guides');
+      const st = S.data.tracks[S.m].steps[S.l], k = el.dataset.lk;
+      if (k === 'notes') { const b = fromText(val); st.notes = b.length ? b : null; }
+      else if (k === 'timecodes') { st.timecodes = parseTC(val); const h = $('#tcinfo'); if (h) h.firstChild.textContent = `Распознано таймкодов: ${st.timecodes.length}. `; }
+      else if (k === 'video') { st.video = val.trim(); const h = $('#vkind'); if (h) h.textContent = vidKind(val); }
+      else st[k] = val;
+      dirty('tracks');
     } else if (el.dataset.nk) {
       const n = S.data.news[S.n], k = el.dataset.nk;
       n[k] = k === 'body' ? fromText(val) : val;
@@ -246,38 +268,38 @@
     const a = $('.alist', adm);
     if (!a) return;
     const y = a.scrollTop;
-    if (S.tab === 'guides') {
-      const G = S.data.guides, i = S.m, it = a.querySelectorAll('.it')[i];
-      if (it) { $('.mono', it).textContent = short(G[i].num, i); $('b', it).textContent = G[i].title || 'Без названия'; }
+    if (S.tab === 'tracks') {
+      const G = S.data.tracks, i = S.m, it = a.querySelectorAll('.it')[i];
+      if (it) { $('.mono', it).textContent = String(i + 1).padStart(2, '0') + (G[i].main ? ' ★' : ''); $('b', it).textContent = G[i].title || 'Без названия'; }
     } else drawNews();
     a.scrollTop = y;
   });
   adm.addEventListener('click', async (e) => {
     const b = e.target.closest('button');
     if (!b || b.disabled) return;
-    const d = b.dataset, G = S.data.guides, N = S.data.news;
+    const d = b.dataset, G = S.data.tracks, N = S.data.news;
     const swap = (arr, i, j) => { [arr[i], arr[j]] = [arr[j], arr[i]]; };
-    if (d.pick !== undefined) { if (S.tab === 'guides') { S.m = +d.pick; S.l = null; } else S.n = +d.pick; draw(); }
-    else if (d.up !== undefined) { swap(G, +d.up, +d.up - 1); S.m = +d.up - 1; S.l = null; dirty('guides'); draw(); }
-    else if (d.down !== undefined) { swap(G, +d.down, +d.down + 1); S.m = +d.down + 1; S.l = null; dirty('guides'); draw(); }
+    if (d.pick !== undefined) { if (S.tab === 'tracks') { S.m = +d.pick; S.l = null; } else S.n = +d.pick; draw(); }
+    else if (d.up !== undefined) { swap(G, +d.up, +d.up - 1); S.m = +d.up - 1; S.l = null; dirty('tracks'); draw(); }
+    else if (d.down !== undefined) { swap(G, +d.down, +d.down + 1); S.m = +d.down + 1; S.l = null; dirty('tracks'); draw(); }
     else if (d.open !== undefined) { S.l = +d.open; drawLesson(); }
-    else if (d.lup !== undefined) { swap(G[S.m].lessons, +d.lup, +d.lup - 1); dirty('guides'); drawModule(); }
-    else if (d.ldown !== undefined) { swap(G[S.m].lessons, +d.ldown, +d.ldown + 1); dirty('guides'); drawModule(); }
+    else if (d.lup !== undefined) { swap(G[S.m].steps, +d.lup, +d.lup - 1); dirty('tracks'); drawModule(); }
+    else if (d.ldown !== undefined) { swap(G[S.m].steps, +d.ldown, +d.ldown + 1); dirty('tracks'); drawModule(); }
     else if (d.ldel !== undefined) {
-      const les = G[S.m].lessons[+d.ldel];
-      if (confirm(`Удалить урок «${les.title}»?`)) { G[S.m].lessons.splice(+d.ldel, 1); dirty('guides'); drawModule(); }
+      const les = G[S.m].steps[+d.ldel];
+      if (confirm(`Удалить шаг «${les.title}»?`)) { G[S.m].steps.splice(+d.ldel, 1); dirty('tracks'); drawModule(); }
     } else if (d.act === 'addm') {
-      G.push({ id: uid('m'), num: `${String(G.length).padStart(2, '0')} · модуль`, title: 'Новый модуль', desc: '', lessons: [] });
-      S.m = G.length - 1; S.l = null; dirty('guides'); draw(); const t = $('#aed input[data-k=title]'); t.focus(); t.select();
+      G.push({ id: uid('t'), title: 'Новое направление', desc: '', tags: [], steps: [] });
+      S.m = G.length - 1; S.l = null; dirty('tracks'); draw(); const t = $('#aed input[data-k=title]'); t.focus(); t.select();
     } else if (d.act === 'delm') {
       const m = G[S.m];
-      if (confirm(`Удалить модуль «${m.title}» вместе со всеми уроками (${m.lessons.length})?`)) { G.splice(S.m, 1); S.m = Math.max(0, S.m - 1); dirty('guides'); draw(); }
+      if (confirm(`Удалить направление «${m.title}» вместе со всеми шагами (${m.steps.length})?`)) { G.splice(S.m, 1); S.m = Math.max(0, S.m - 1); dirty('tracks'); draw(); }
     } else if (d.act === 'addl') {
-      G[S.m].lessons.push({ title: 'Новый урок', content: null });
-      S.l = G[S.m].lessons.length - 1; dirty('guides'); drawLesson(); const t = $('#aed input[data-lk=title]'); t.focus(); t.select();
+      G[S.m].steps.push({ id: uid('s'), num: `1.${G[S.m].steps.length + 1}`, title: 'Новый шаг', video: '', timecodes: [], notes: null });
+      S.l = G[S.m].steps.length - 1; dirty('tracks'); drawLesson(); const t = $('#aed input[data-lk=title]'); t.focus(); t.select();
     } else if (d.act === 'dell') {
-      const les = G[S.m].lessons[S.l];
-      if (confirm(`Удалить урок «${les.title}»?`)) { G[S.m].lessons.splice(S.l, 1); S.l = null; dirty('guides'); drawModule(); }
+      const les = G[S.m].steps[S.l];
+      if (confirm(`Удалить шаг «${les.title}»?`)) { G[S.m].steps.splice(S.l, 1); S.l = null; dirty('tracks'); drawModule(); }
     } else if (d.act === 'back') { S.l = null; drawModule(); }
     else if (d.act === 'addn') {
       N.push({ id: uid('n'), date: today(), tag: 'Новости', pin: false, title: 'Новая запись', lead: '', body: [] });
@@ -295,10 +317,10 @@
   });
 
   /* ---------- старт ---------- */
-  Promise.all([F.call('/api/data?f=guides'), F.call('/api/data?f=news')]).then(([g, n]) => {
-    S.data = { guides: g, news: n };
+  Promise.all([F.call('/api/data?f=tracks'), F.call('/api/data?f=news')]).then(([g, n]) => {
+    S.data = { tracks: g, news: n };
     const q = new URLSearchParams(location.hash.slice(1));
-    if (q.get('m')) { const i = g.findIndex((m) => m.id === q.get('m')); if (i >= 0) { S.m = i; const l = parseInt(q.get('l'), 10); S.l = g[i].lessons[l] ? l : null; } }
+    if (q.get('t')) { const i = g.findIndex((m) => m.id === q.get('t')); if (i >= 0) { S.m = i; const l = g[i].steps.findIndex((x) => x.id === q.get('s')); S.l = l >= 0 ? l : null; } }
     draw();
   }).catch((e) => { adm.innerHTML = `<div class="empty" style="grid-column:1/-1">Не удалось загрузить данные: ${esc(e.message)}</div>`; });
 })();

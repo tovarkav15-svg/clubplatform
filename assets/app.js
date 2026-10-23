@@ -35,9 +35,9 @@
     arrow: '<path d="M7 17 17 7M9 7h8v8"/>',
   };
   const icon = (n) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS[n]}</svg>`;
-  const NAV = [['index.html', 'home', 'Главная'], ['news.html', 'news', 'Новости'], ['guides.html', 'guides', 'Гайды'], ['support.html', 'support', 'Поддержка']];
+  const NAV = [['index.html', 'home', 'Главная'], ['news.html', 'news', 'Новости'], ['guides.html', 'guides', 'Обучение'], ['support.html', 'support', 'Поддержка']];
   const MENU = isOwner ? [...NAV, ['admin.html', 'edit', 'Кабинет']] : NAV;
-  const cur = { index: 'index.html', news: 'news.html', guides: 'guides.html', guide: 'guides.html', support: 'support.html', admin: 'admin.html' }[page];
+  const cur = { index: 'index.html', news: 'news.html', guides: 'guides.html', track: 'guides.html', guide: 'guides.html', support: 'support.html', admin: 'admin.html' }[page];
 
   document.body.insertAdjacentHTML('afterbegin', `
   <svg style="position:absolute;width:0;height:0;overflow:hidden" aria-hidden="true" focusable="false"><defs>
@@ -67,7 +67,7 @@
   if (lo) lo.addEventListener('click', (e) => { e.preventDefault(); call('/api/logout', { method: 'POST' }).catch(() => {}).finally(() => { store.set('session', null); location.href = 'index.html'; }); });
 
   /* ---------- экран входа ---------- */
-  const locked = ['index', 'news', 'guides', 'guide', 'admin'].includes(page) && !sess;
+  const locked = ['index', 'news', 'guides', 'track', 'guide', 'admin'].includes(page) && !sess;
   if (locked) {
     $('main').innerHTML = `
       <section class="phead fade"><span class="kick mono">платформа участников · F-Producers Club</span>
@@ -97,10 +97,64 @@
     });
   }
   const fmtDate = (d) => new Date(d + 'T12:00:00').toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' });
-  const lessonsTotal = (mods) => mods.reduce((n, m) => n + m.lessons.length, 0);
-  const modDone = (m, done) => m.lessons.filter((_, i) => done.has(`${m.id}:${i}`)).length;
+  const stepsTotal = (T) => T.reduce((n, t) => n + t.steps.length, 0);
+  const tDone = (t, done) => t.steps.filter((s) => done.has(`${t.id}:${s.id}`)).length;
+  const pct = (a, b) => (b ? Math.round((a / b) * 100) : 0);
   const plural = (n, one, few, many) => { const d = n % 10, h = n % 100; return d === 1 && h !== 11 ? one : d >= 2 && d <= 4 && (h < 12 || h > 14) ? few : many; };
   const fail = (box, what) => { box.innerHTML = `<div class="empty">Не удалось загрузить ${what}. Обнови страницу.</div>`; };
+  const stepUrl = (t, s) => `guide.html?t=${encodeURIComponent(t.id)}&s=${encodeURIComponent(s.id)}`;
+
+  /* ---------- видео: YouTube, Rutube, VK, Kinescope, файл ---------- */
+  const embed = (u) => {
+    u = String(u || '').trim();
+    if (!u) return null;
+    let m;
+    if ((m = u.match(/(?:youtube\.com\/(?:watch\?v=|shorts\/|embed\/|live\/)|youtu\.be\/)([\w-]{11})/))) return { type: 'yt', src: `https://www.youtube.com/embed/${m[1]}?rel=0&modestbranding=1&playsinline=1&enablejsapi=1` };
+    if ((m = u.match(/rutube\.ru\/(?:video|play\/embed)\/([\w]+)/))) return { type: 'rt', src: `https://rutube.ru/play/embed/${m[1]}` };
+    if ((m = u.match(/vk(?:video)?\.(?:com|ru)\/(?:video|clip)(-?\d+)_(\d+)/))) return { type: 'vk', src: `https://vk.com/video_ext.php?oid=${m[1]}&id=${m[2]}&hd=2` };
+    if ((m = u.match(/kinescope\.io\/(?:embed\/)?([\w]+)/))) return { type: 'ks', src: `https://kinescope.io/embed/${m[1]}` };
+    if (/\.(mp4|webm|mov|m4v)(\?|#|$)/i.test(u)) return { type: 'file', src: u };
+    return /^https:\/\//.test(u) ? { type: 'frame', src: u } : null;
+  };
+  const player = (v) => (v.type === 'file'
+    ? `<video id="vid" src="${esc(v.src)}" controls playsinline preload="metadata"></video>`
+    : `<iframe id="vid" src="${esc(v.src)}" allow="autoplay; encrypted-media; fullscreen; picture-in-picture" allowfullscreen title="Видео урока"></iframe>`);
+  const seek = (v, s) => {
+    const el = $('#vid');
+    if (!el) return;
+    if (matchMedia('(max-width: 1000px)').matches) el.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    if (v.type === 'file') { el.currentTime = s; el.play().catch(() => {}); return; }
+    const post = (o) => el.contentWindow && el.contentWindow.postMessage(JSON.stringify(o), '*');
+    if (v.type === 'yt') { post({ event: 'command', func: 'seekTo', args: [s, true] }); post({ event: 'command', func: 'playVideo', args: [] }); return; }
+    if (v.type === 'rt') { post({ type: 'player:setCurrentTime', data: { time: s } }); post({ type: 'player:play', data: {} }); return; }
+    const u = new URL(v.src);
+    u.searchParams.set('t', v.type === 'vk' ? `${Math.floor(s / 60)}m${s % 60}s` : String(s));
+    u.searchParams.set('autoplay', '1');
+    el.src = u.toString();
+  };
+
+  /* ---------- обложка направления (типографика, без чужих картинок) ---------- */
+  const cover = (t, i) => `
+    <div class="ncover ${t.main ? 'main' : ''}" aria-hidden="true">
+      <span class="nnum">${String(i + 1).padStart(2, '0')}</span>
+      <span class="ngrid"></span>
+      <span class="cstar"><svg><use href="#cs8"/></svg></span>
+      <span class="ntags mono">${(t.tags || []).slice(0, 4).map((x) => `<span>— ${esc(x)}</span>`).join('')}</span>
+      <b class="ntitle">${esc(t.title)}</b>
+      ${t.main ? '<span class="nbadge mono"><svg class="px" viewBox="0 0 9 9">' + starRects() + '</svg>главное направление</span>' : ''}
+    </div>`;
+
+  const ncard = (t, i, done) => {
+    const d = tDone(t, done), n = t.steps.length, p = pct(d, n), vids = t.steps.filter((s) => s.video).length;
+    return `<a class="card ncard fade ${t.main ? 'main' : ''}" style="--d:${i}" href="track.html?t=${encodeURIComponent(t.id)}">
+      ${cover(t, i)}
+      <div class="nbody">
+        <div class="nmeta mono"><span>${n} ${plural(n, 'шаг', 'шага', 'шагов')}</span><span>${vids ? `${vids} видео` : 'видео скоро'}</span></div>
+        <h3>${esc(t.title)}</h3><p>${esc(t.desc)}</p>
+        <div class="pbar" style="--p:${p}%"><i></i></div>
+        <div class="nfoot mono"><span>${d ? (d === n ? 'пройдено полностью' : `пройдено ${d} из ${n}`) : 'не начато'}</span><span class="go">Открыть →</span></div>
+      </div></a>`;
+  };
 
   /* ---------- блоки контента ---------- */
   const inline = (t) => esc(t).replace(/\*\*(.+?)\*\*/g, '<b>$1</b>').replace(/\[(.+?)\]\((https?:\/\/[^\s)]+|[\w-]+\.html[^\s)]*)\)/g, (_, txt, url) => `<a href="${url}"${/^https?:/.test(url) ? ' target="_blank" rel="noopener"' : ''} style="border-bottom:1px solid currentColor">${txt}</a>`);
@@ -110,7 +164,7 @@
     if (b.list) return `<ul>${b.list.map((x) => `<li>${inline(x)}</li>`).join('')}</ul>`;
     if (b.steps) return `<ol>${b.steps.map((x) => `<li>${inline(x)}</li>`).join('')}</ol>`;
     if (b.tip) return `<div class="tip"><b>${inline(b.title || 'Важно')}</b>${inline(b.tip)}</div>`;
-    if (b.video) return `<div class="video"><iframe src="${esc(b.video)}" allowfullscreen loading="lazy" title="Видео"></iframe></div>`;
+    if (b.video) { const v = embed(b.video); return v ? `<div class="video">${player(v).replace(' id="vid"', '')}</div>` : ''; }
     if (b.img) return `<img src="${esc(b.img)}" alt="${esc(b.alt || '')}" style="border-radius:16px">`;
     return '';
   }).join('');
@@ -125,23 +179,27 @@
 
   /* ---------- главная ---------- */
   if (page === 'index' && !locked) {
-    Promise.all([load('news'), load('guides')]).then(([news, mods]) => {
-      const done = doneSet(), total = lessonsTotal(mods), n = done.size;
+    Promise.all([load('news'), load('tracks')]).then(([news, T]) => {
+      const done = doneSet(), total = stepsTotal(T), n = T.reduce((a, t) => a + tDone(t, done), 0);
       const last = store.get('last', null);
-      const lm = last && mods.find((m) => m.id === last.m);
-      const target = lm ? { m: lm, l: Math.min(last.l, lm.lessons.length - 1) } : { m: mods[0], l: 0 };
-      $('#cont').innerHTML = `
+      const lt = last && last.t && T.find((x) => x.id === last.t);
+      const li = lt ? lt.steps.findIndex((s) => s.id === last.s) : -1;
+      const tg = li >= 0 ? { t: lt, i: li } : { t: T.find((x) => x.main) || T[0], i: 0 };
+      const s = tg.t && tg.t.steps[tg.i];
+      $('#cont').innerHTML = s ? `
         <span class="cstar" aria-hidden="true"><svg><use href="#cs8"/></svg></span>
-        <div><span class="mono">${lm ? 'продолжить обучение' : 'начни отсюда'}</span>
-        <h3>${esc(target.m.lessons[target.l].title)}</h3><p>Модуль «${esc(target.m.title)}» · урок ${target.l + 1} из ${target.m.lessons.length}</p></div>
-        <div><div class="prog" style="--p:${total ? Math.round(n / total * 100) : 0}%"><i></i></div><p class="mono" style="margin-top:10px">пройдено ${n} из ${total} уроков</p></div>
-        <a class="btn" href="guide.html?m=${encodeURIComponent(target.m.id)}&l=${target.l}">${lm ? 'Продолжить' : 'Начать'} <span class="ar">→</span></a>`;
-      $('#st-guides').textContent = mods.length;
+        <div><span class="mono">${li >= 0 ? 'продолжить обучение' : 'начни отсюда'}</span>
+        <h3>${esc(s.title)}</h3><p>${esc(tg.t.title)} · шаг ${esc(s.num)} из ${tg.t.steps.length}</p></div>
+        <div><div class="prog" style="--p:${pct(n, total)}%"><i></i></div><p class="mono" style="margin-top:10px">пройдено ${n} из ${total} ${plural(total, 'шага', 'шагов', 'шагов')}</p></div>
+        <a class="btn" href="${stepUrl(tg.t, s)}">${li >= 0 ? 'Продолжить' : 'Начать'} <span class="ar">→</span></a>` : '<div><h3>Обучение скоро появится</h3></div>';
+      $('#st-guides').textContent = T.length;
       $('#st-lessons').textContent = total;
+      const ht = $('#home-tracks');
+      if (ht) ht.innerHTML = T.map((t, i) => ncard(t, i, done)).join('');
       const sorted = [...news].sort((a, b) => (b.pin - a.pin) || b.date.localeCompare(a.date));
       $('#home-news').innerHTML = sorted.slice(0, 3).map((x) => `<a class="card hov post" href="news.html#${encodeURIComponent(x.id)}" style="display:block"><div class="meta mono"><span class="pill">${esc(x.tag)}</span><span>${fmtDate(x.date)}</span></div><h3>${esc(x.title)}</h3><div class="body">${inline(x.lead)}</div></a>`).join('');
       $('#sc-news').textContent = `${news.length} ${plural(news.length, 'запись', 'записи', 'записей')}`;
-      $('#sc-guides').textContent = `${mods.length} модулей · ${total} уроков`;
+      $('#sc-guides').textContent = `${T.length} ${plural(T.length, 'направление', 'направления', 'направлений')} · ${total} ${plural(total, 'шаг', 'шага', 'шагов')}`;
       reveal();
     }).catch(() => fail($('#home-news'), 'данные'));
   }
@@ -166,53 +224,105 @@
     }).catch(() => fail(box, 'новости'));
   }
 
-  /* ---------- список гайдов ---------- */
+  /* ---------- направления ---------- */
   if (page === 'guides' && !locked) {
-    const box = $('#mods');
-    load('guides').then((mods) => {
+    const box = $('#tracks');
+    load('tracks').then((T) => {
       const done = doneSet();
-      box.innerHTML = mods.map((m, i) => {
-        const d = modDone(m, done), p = Math.round(d / m.lessons.length * 100);
-        return `<a class="card mod fade ${m.start ? 'start' : ''}" style="--d:${i % 6}" href="guide.html?m=${encodeURIComponent(m.id)}&l=0">
-          <div class="row mono"><span>${esc(m.num)}</span><span class="pill">${m.lessons.length} ${plural(m.lessons.length, 'урок', 'урока', 'уроков')}</span></div>
-          <h3>${esc(m.title)}</h3><p>${esc(m.desc)}</p>
-          <div class="bar" style="--p:${p}%"><i></i></div>
-          <div class="foot mono"><span>${d ? `пройдено ${d} из ${m.lessons.length}` : 'не начат'}</span><span>${p}%</span></div></a>`;
-      }).join('');
+      box.innerHTML = T.length ? T.map((t, i) => ncard(t, i, done)).join('') : '<div class="empty">Направления скоро появятся.</div>';
       reveal();
-    }).catch(() => fail(box, 'гайды'));
+    }).catch(() => fail(box, 'обучение'));
+  }
+
+  /* ---------- шаги направления ---------- */
+  if (page === 'track' && !locked) {
+    const box = $('#track');
+    load('tracks').then((T) => {
+      const q = new URLSearchParams(location.search);
+      const i = Math.max(0, T.findIndex((x) => x.id === q.get('t')));
+      const t = T[i];
+      if (!t) return fail(box, 'направление');
+      const done = doneSet(), d = tDone(t, done), n = t.steps.length, p = pct(d, n);
+      const ni = t.steps.findIndex((s) => !done.has(`${t.id}:${s.id}`));
+      const go = t.steps[ni < 0 ? 0 : ni];
+      document.title = `${t.title} — обучение · F-Producers Club`;
+      box.innerHTML = `
+        <div class="crumbs mono fade"><a href="guides.html">Обучение</a><span>/</span><span>${esc(t.title)}</span></div>
+        <section class="thero fade">
+          ${cover(t, i)}
+          <div class="tinfo">
+            <span class="kick mono">направление · ${String(i + 1).padStart(2, '0')}${t.main ? ' · главное' : ''}</span>
+            <h1>${esc(t.title)}</h1><p>${esc(t.desc)}</p>
+            <div class="tprog"><div class="pbar" style="--p:${p}%"><i></i></div><span class="mono">${d} / ${n} · ${p}%</span></div>
+            ${go ? `<a class="btn" href="${stepUrl(t, go)}">${d === 0 ? `Начать с шага ${esc(go.num)}` : d === n ? 'Пересмотреть с начала' : `Продолжить: шаг ${esc(go.num)}`} <span class="ar">→</span></a>` : ''}
+          </div>
+        </section>
+        <section class="sec">
+          <div class="sec-t"><h2>Шаги</h2><span class="mono">${n} ${plural(n, 'шаг', 'шага', 'шагов')}</span></div>
+          ${n ? `<ol class="srows">${t.steps.map((s, k) => {
+            const ok = done.has(`${t.id}:${s.id}`), tc = (s.timecodes || []).length;
+            return `<li><a class="card srow fade ${ok ? 'done' : ''}" style="--d:${k % 8}" href="${stepUrl(t, s)}">
+              <span class="snum">${esc(s.num)}</span>
+              <span class="stx"><b>${esc(s.title)}</b><small class="mono">${s.video ? '▶ видео' : 'видео скоро'}${tc ? ` · ${tc} ${plural(tc, 'таймкод', 'таймкода', 'таймкодов')}` : ''}${s.notes && s.notes.length ? ' · конспект' : ''}</small></span>
+              <span class="sck" aria-label="${ok ? 'пройдено' : 'не пройдено'}">${ok ? '✓' : '→'}</span></a></li>`;
+          }).join('')}</ol>` : '<div class="empty">Шаги скоро появятся.</div>'}
+        </section>`;
+      reveal();
+    }).catch(() => fail(box, 'направление'));
   }
 
   /* ---------- урок ---------- */
   if (page === 'guide' && !locked) {
     const box = $('#reader');
-    load('guides').then((mods) => {
+    load('tracks').then((T) => {
       const q = new URLSearchParams(location.search);
-      const m = mods.find((x) => x.id === q.get('m')) || mods[0];
-      let l = Math.max(0, Math.min(m.lessons.length - 1, parseInt(q.get('l'), 10) || 0));
+      const t = T.find((x) => x.id === q.get('t')) || T.find((x) => x.main) || T[0];
+      if (!t || !t.steps.length) { box.innerHTML = '<div class="empty" style="grid-column:1/-1">Шаги скоро появятся. <a href="guides.html" style="border-bottom:1px solid currentColor">К обучению</a></div>'; return; }
+      let si = Math.max(0, t.steps.findIndex((s) => s.id === q.get('s')));
       const draw = () => {
-        const done = doneSet(), les = m.lessons[l], key = `${m.id}:${l}`, isDone = done.has(key);
-        store.set('last', { m: m.id, l });
-        document.title = `${les.title} — ${m.title} · F-Producers Club`;
-        const mi = mods.indexOf(m), next = l < m.lessons.length - 1 ? { m, l: l + 1 } : mods[mi + 1] ? { m: mods[mi + 1], l: 0 } : null;
+        const done = doneSet(), s = t.steps[si], key = `${t.id}:${s.id}`, isDone = done.has(key);
+        const p = pct(tDone(t, done), t.steps.length), v = embed(s.video), tcs = s.timecodes || [];
+        const prev = t.steps[si - 1], next = t.steps[si + 1];
+        store.set('last', { t: t.id, s: s.id });
+        document.title = `${s.num} ${s.title} — ${t.title} · F-Producers Club`;
         box.innerHTML = `
-          <aside class="card toc">
-            <span class="mono">${esc(m.num)}</span><h4>${esc(m.title)}</h4>
-            <ol>${m.lessons.map((x, i) => `<li><a href="?m=${encodeURIComponent(m.id)}&l=${i}" data-l="${i}" class="${i === l ? 'on' : ''} ${done.has(`${m.id}:${i}`) ? 'done' : ''}"><span class="ck">${done.has(`${m.id}:${i}`) ? '✓' : i + 1}</span><span>${esc(x.title)}</span></a></li>`).join('')}</ol>
+          <aside class="card ltoc">
+            <a class="back mono" href="track.html?t=${encodeURIComponent(t.id)}">← ${esc(t.title)}</a>
+            <div class="tprog"><div class="pbar" style="--p:${p}%"><i></i></div><span class="mono">${p}%</span></div>
+            <ol>${t.steps.map((x, k) => { const ok = done.has(`${t.id}:${x.id}`); return `<li><a href="${stepUrl(t, x)}" data-i="${k}" class="${k === si ? 'on' : ''} ${ok ? 'done' : ''}"><span class="n mono">${esc(x.num)}</span><span class="tt">${esc(x.title)}</span><span class="ck">${ok ? '✓' : ''}</span></a></li>`; }).join('')}</ol>
           </aside>
           <article class="card lesson">
-            <div class="crumbs mono"><a href="guides.html">Гайды</a><span>/</span><span>${esc(m.title)}</span></div>
-            <div class="meta mono"><span class="pill">урок ${l + 1} из ${m.lessons.length}</span>${les.time ? `<span>${esc(les.time)}</span>` : ''}</div>
-            <h1>${esc(les.title)}</h1>
-            <div class="content">${les.content && les.content.length ? blocks(les.content) : `<div class="soon"><b>Материал готовится</b><p>Урок скоро появится на платформе — об этом напишем в новостях клуба. Есть вопрос по теме уже сейчас? Задай его Артёму.</p><a class="btn sm ghost" href="support.html?topic=${encodeURIComponent(m.title)}&about=${encodeURIComponent(les.title)}">Задать вопрос <span class="ar">→</span></a></div>`}</div>
-            <div class="nav2">
-              <button class="btn sm done-btn ${isDone ? 'is' : ''}" type="button">${isDone ? '✓ Пройдено' : 'Отметить пройденным'}</button>
-              ${isOwner ? `<a class="btn sm ghost" href="admin.html#m=${encodeURIComponent(m.id)}&l=${l}">✎ Редактировать</a>` : ''}
-              ${next ? `<a class="btn sm ghost" href="guide.html?m=${encodeURIComponent(next.m.id)}&l=${next.l}">${next.m === m ? 'Следующий урок' : 'Следующий модуль'} <span class="ar">→</span></a>` : '<a class="btn sm ghost" href="guides.html">Все гайды</a>'}
+            <div class="lhead">
+              <div><span class="kick mono">шаг ${esc(s.num)} · ${esc(t.title)}</span><h1>${esc(s.title)}</h1></div>
+              <button class="dbtn ${isDone ? 'is' : ''}" type="button" aria-pressed="${isDone}" title="${isDone ? 'Снять отметку' : 'Отметить пройденным'}">✓</button>
             </div>
+            <div class="vbox">${v ? player(v) : `<div class="vsoon"><svg class="px" viewBox="0 0 9 9">${starRects()}</svg><b>Видео скоро появится</b><span class="mono">шаг ${esc(s.num)}</span></div>`}</div>
+            <div class="tcs"><h3>Таймкоды</h3>${tcs.length
+              ? `<ol>${tcs.map((c) => `<li><button type="button" data-s="${c.s}" ${v ? '' : 'disabled'}><span class="mono">${esc(c.t)}</span><span>${esc(c.label)}</span></button></li>`).join('')}</ol>`
+              : '<p>Появятся вместе с видео.</p>'}</div>
+            ${s.notes && s.notes.length ? `<div class="content">${blocks(s.notes)}</div>` : ''}
+            <div class="nav2">
+              ${prev ? `<a class="btn sm ghost" href="${stepUrl(t, prev)}" data-i="${si - 1}">← ${esc(prev.num)}</a>` : '<span></span>'}
+              <span class="mid">
+                <button class="btn sm ghost done-btn ${isDone ? 'is' : ''}" type="button">${isDone ? '✓ Пройдено' : 'Отметить пройденным'}</button>
+                ${isOwner ? `<a class="btn sm ghost" href="admin.html#t=${encodeURIComponent(t.id)}&s=${encodeURIComponent(s.id)}">✎ Править</a>` : ''}
+              </span>
+              ${next ? `<a class="btn sm" href="${stepUrl(t, next)}" data-i="${si + 1}">Шаг ${esc(next.num)} <span class="ar">→</span></a>` : `<a class="btn sm" href="track.html?t=${encodeURIComponent(t.id)}">К направлению <span class="ar">→</span></a>`}
+            </div>
+            <p class="askq">Остался вопрос по шагу? <a href="support.html?topic=${encodeURIComponent(t.title)}&about=${encodeURIComponent(s.num + ' ' + s.title)}">Спросить Артёма →</a></p>
           </article>`;
-        $('.done-btn', box).addEventListener('click', () => { toggleDone(key); draw(); });
-        $$('.toc a', box).forEach((a) => a.addEventListener('click', (e) => { e.preventDefault(); l = +a.dataset.l; history.replaceState(null, '', `?m=${encodeURIComponent(m.id)}&l=${l}`); draw(); window.scrollTo({ top: 0, behavior: 'smooth' }); }));
+        const tog = () => { toggleDone(key); draw(); };
+        $('.dbtn', box).addEventListener('click', tog);
+        $('.done-btn', box).addEventListener('click', tog);
+        $$('[data-i]', box).forEach((a) => a.addEventListener('click', (e) => {
+          e.preventDefault(); si = +a.dataset.i;
+          history.replaceState(null, '', stepUrl(t, t.steps[si]).replace('guide.html', ''));
+          draw(); window.scrollTo({ top: 0, behavior: 'smooth' });
+        }));
+        $$('.tcs button[data-s]', box).forEach((b) => b.addEventListener('click', () => {
+          $$('.tcs button', box).forEach((x) => x.classList.toggle('on', x === b));
+          seek(v, +b.dataset.s);
+        }));
       };
       draw();
     }).catch(() => fail(box, 'урок'));
@@ -221,8 +331,8 @@
   /* ---------- поддержка ---------- */
   if (page === 'support') {
     const q = new URLSearchParams(location.search);
-    const topics = ['Гайды', 'Упаковка', 'Прогревы', 'Запуск', 'Трафик', 'Договор', 'Другое'];
-    let topic = q.get('topic') || store.get('topic', 'Гайды');
+    const topics = ['Продюсирование', 'Инфобизнес', 'Продажи в звонках', 'Платформа', 'Другое'];
+    let topic = q.get('topic') || store.get('topic', 'Продюсирование');
     if (!topics.includes(topic)) topics.splice(topics.length - 1, 0, topic);
     const ta = $('#q'), cnt = $('#cnt'), chips = $('#topics');
     ta.value = q.get('about') ? `Вопрос по уроку «${q.get('about')}»: ` : store.get('draft', '');
