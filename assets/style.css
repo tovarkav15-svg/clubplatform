@@ -459,3 +459,41 @@ main { animation: pagein .7s var(--ease) both; }
   .mbox { padding: 22px; }
   .mact .btn { flex: 1 1 auto; justify-content: center; }
 }
+
+/* ---------- защита от записи ---------- */
+.wm { position: fixed; inset: 0; z-index: 9990; pointer-events: none; opacity: .055; background-repeat: repeat; }
+.vwm { position: absolute; inset: 0; z-index: 3; pointer-events: none; opacity: .16; background-repeat: repeat; }
+.wrun { position: absolute; white-space: nowrap; font: 600 13px/1 ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: .02em; transition: left 1.8s ease, top 1.8s ease; }
+.wm .wrun { color: #0d141d; opacity: 1; font-size: 12px; }
+.vwm .wrun { color: #fff; opacity: 1; text-shadow: 0 1px 2px rgba(0,0,0,.6); }
+.vfs { position: absolute; top: 12px; right: 12px; z-index: 4; padding: 7px 12px; border: 0; border-radius: 999px; background: rgba(13,20,29,.72); color: #fff; font: 600 12px/1 inherit; font-family: inherit; cursor: pointer; opacity: 0; transition: opacity .2s; }
+.vbox:hover .vfs, .vfs:focus-visible { opacity: 1; }
+@media (hover: none) { .vfs { opacity: .85; } }
+.vbox:fullscreen { aspect-ratio: auto; border-radius: 0; width: 100vw; height: 100vh; }
+html.shield main, html.shield .vbox { filter: blur(28px) brightness(.9); transition: filter .15s; }
+html.shield body::after { content: 'Материалы скрыты, пока окно платформы не активно'; position: fixed; inset: 0; z-index: 9995; display: grid; place-items: center; padding: 24px; text-align: center; font: 600 15px/1.4 ui-monospace, Menlo, monospace; color: #0d141d; background: rgba(255,255,255,.55); }
+body:not(:has(input:focus, textarea:focus)) main { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+@media print { body > * { display: none !important; } body::before { content: 'Печать материалов F-Producers Club отключена'; display: block; padding: 40px; font: 600 18px sans-serif; } }
+
+/* ---------- фирменная загрузка: пиксельная звезда собирается волной ---------- */
+.ldr { display: grid; justify-items: center; align-content: center; gap: 14px; min-height: 240px; padding: 40px 20px; text-align: center; color: var(--navy); }
+.ldr.wide { grid-column: 1 / -1; }
+.ldr-star { width: 54px; height: 54px; overflow: visible; shape-rendering: crispEdges; }
+.ldr-star rect { fill: currentColor; transform-box: fill-box; transform-origin: center; opacity: .12; animation: ldrpx 2.2s var(--ease, cubic-bezier(.22,1,.36,1)) infinite; animation-delay: calc(var(--i) * 90ms); }
+@keyframes ldrpx { 0%, 100% { opacity: .12; transform: scale(.55); } 28%, 52% { opacity: 1; transform: none; } }
+.ldr-t { color: var(--sub); }
+.ldr-line { position: relative; width: 120px; height: 2px; border-radius: 2px; overflow: hidden; background: rgba(23,34,49,.1); }
+.ldr-line i { position: absolute; inset: 0; width: 40%; border-radius: inherit; background: currentColor; animation: ldrline 1.4s cubic-bezier(.65,0,.35,1) infinite; }
+@keyframes ldrline { from { transform: translateX(-100%); } to { transform: translateX(250%); } }
+.ldr-slow { min-height: 1.4em; font-size: 13px; color: var(--sub); }
+.ldr-slow button { margin-left: 6px; padding: 0; border: 0; background: none; font: inherit; font-weight: 600; color: var(--navy); border-bottom: 1.5px solid currentColor; cursor: pointer; }
+.ldr.dark { position: absolute; inset: 0; z-index: 0; min-height: 0; color: #fff; }
+.ldr.dark .ldr-t, .ldr.dark .ldr-slow { color: rgba(255,255,255,.6); }
+.ldr.dark .ldr-line { background: rgba(255,255,255,.15); }
+.vbox > iframe, .vbox > video { z-index: 1; opacity: 0; transition: opacity .5s; }
+.vbox.ready > iframe, .vbox.ready > video { opacity: 1; }
+.vbox.ready > .ldr { display: none; }
+.tbar { position: fixed; z-index: 9999; left: 0; right: 0; top: 0; height: 2px; overflow: hidden; pointer-events: none; opacity: 0; transition: opacity .3s; }
+.tbar.on { opacity: 1; }
+.tbar i { position: absolute; top: 0; bottom: 0; width: 30%; background: var(--navy); box-shadow: 0 0 8px rgba(23,34,49,.4); animation: ldrline 1.2s cubic-bezier(.65,0,.35,1) infinite; }
+@media (prefers-reduced-motion: reduce) { .ldr-star rect { animation-duration: 4s; } .ldr-line i, .tbar i { animation-duration: 2.4s; } }

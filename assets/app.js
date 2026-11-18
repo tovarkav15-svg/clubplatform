@@ -18,8 +18,17 @@
   const sess = store.get('session', null);
   const isOwner = !!(sess && sess.role === 'owner');
   const device = (() => { let d = store.get('device', ''); if (!d) { d = [...crypto.getRandomValues(new Uint8Array(16))].map((b) => b.toString(16).padStart(2, '0')).join(''); store.set('device', d); } return d; })();
-  const call = (path, opt = {}) => fetch(API + path, { ...opt, headers: { 'content-type': 'application/json', ...(sess ? { authorization: `Bearer ${sess.token}` } : {}), ...(opt.headers || {}) } })
-    .then(async (r) => { const j = await r.json().catch(() => ({})); if (r.status === 401 && sess) { store.set('session', null); location.reload(); } if (!r.ok) throw new Error(j.error || 'Ошибка сервера'); return j; });
+  // тонкая фирменная полоска сверху — появляется, только если запрос идёт дольше 350 мс
+  const busy = { n: 0, t: 0, set(d) {
+    this.n = Math.max(0, this.n + d);
+    let bar = document.querySelector('.tbar');
+    if (!bar) { bar = document.createElement('div'); bar.className = 'tbar'; bar.setAttribute('aria-hidden', 'true'); bar.innerHTML = '<i></i>'; document.body.appendChild(bar); }
+    clearTimeout(this.t);
+    if (this.n) this.t = setTimeout(() => bar.classList.add('on'), 350); else bar.classList.remove('on');
+  } };
+  const call = (path, opt = {}) => (busy.set(1), fetch(API + path, { ...opt, headers: { 'content-type': 'application/json', ...(sess ? { authorization: `Bearer ${sess.token}` } : {}), ...(opt.headers || {}) } })
+    .then(async (r) => { const j = await r.json().catch(() => ({})); if (r.status === 401 && sess) { store.set('session', null); location.reload(); } if (!r.ok) throw new Error(j.error || 'Ошибка сервера'); return j; })
+    .finally(() => busy.set(-1)));
   window.FPC = { call, sess, isOwner, store };
   const toggleDone = (key) => { const s = doneSet(); s.has(key) ? s.delete(key) : s.add(key); store.set('done', [...s]); return s.has(key); };
 
@@ -79,6 +88,18 @@
   /* ---------- общие элементы ---------- */
   const STAR = ['....#....', '....#....', '...###...', '#########', '.###.###.', '..#####..', '..##.##..', '.##...##.', '.#.....#.'];
   const starRects = () => STAR.flatMap((r, y) => [...r].map((c, x) => (c === '#' ? `<rect x="${x}" y="${y}" width="1.02" height="1.02"/>` : ''))).join('');
+  const loader = (txt = 'Загружаем…', cls = '') => {
+    const px = STAR.flatMap((r, y) => [...r].map((c, x) => (c === '#' ? `<rect x="${x}" y="${y}" width="1.02" height="1.02" style="--i:${Math.hypot(x - 4, y - 4).toFixed(2)}"/>` : ''))).join('');
+    return `<div class="ldr ${cls}" role="status" data-t="${Date.now()}"><svg class="ldr-star" viewBox="0 0 9 9" aria-hidden="true">${px}</svg><span class="mono ldr-t">${txt}</span><span class="ldr-line" aria-hidden="true"><i></i></span><span class="ldr-slow"></span></div>`;
+  };
+  // если грузится долго — честно говорим об этом и даём обновить
+  setInterval(() => document.querySelectorAll('.ldr[data-t]').forEach((l) => {
+    const s = (Date.now() - +l.dataset.t) / 1000, box = l.querySelector('.ldr-slow');
+    const want = s > 15 ? 'stuck' : s > 5 ? 'slow' : '';
+    if (box.dataset.k === want) return;
+    box.dataset.k = want;
+    box.innerHTML = want === 'stuck' ? 'Не загружается? <button type="button" onclick="location.reload()">Обновить страницу</button>' : want === 'slow' ? 'Интернет не спешит — ещё немного…' : '';
+  }), 1000);
   const ICONS = {
     home: '<path d="M3 10.5 12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-6h-6v6H4a1 1 0 0 1-1-1z"/>',
     news: '<path d="M4 5h13v14a2 2 0 0 0 2 2H6a2 2 0 0 1-2-2zM17 9h3v10a2 2 0 0 1-2 2M8 9h5M8 13h5M8 17h3"/>',
@@ -184,8 +205,8 @@
     return /^https:\/\//.test(u) ? { type: 'frame', src: u } : null;
   };
   const player = (v) => (v.type === 'file'
-    ? `<video id="vid" src="${esc(v.src)}" controls playsinline preload="metadata"></video>`
-    : `<iframe id="vid" src="${esc(v.src)}" allow="autoplay; encrypted-media; fullscreen; picture-in-picture" allowfullscreen title="Видео урока"></iframe>`);
+    ? `<video id="vid" src="${esc(v.src)}" controls playsinline preload="metadata" controlslist="nodownload nofullscreen noremoteplayback" disablepictureinpicture onloadeddata="this.parentNode.classList.add('ready')"></video>`
+    : `<iframe id="vid" src="${esc(v.src)}" allow="autoplay; encrypted-media" title="Видео урока" onload="this.parentNode.classList.add('ready')"></iframe>`);
   const seek = (v, s) => {
     const el = $('#vid');
     if (!el) return;
@@ -244,8 +265,62 @@
       ${full && n.body && n.body.length ? '<button class="tog" type="button">Читать полностью</button>' : ''}
     </article>`;
 
+  /* ---------- защита от записи: личный водяной знак, скрытие при уходе с окна ---------- */
+  if (sess && !locked && page !== 'admin' && page !== 'support') {
+    const me = { name: sess.name || '', uid: '', un: '', ...store.get('me', {}) };
+    const label = () => [me.name, me.un ? '@' + me.un : '', me.uid ? 'id ' + me.uid : ''].filter(Boolean).join(' · ');
+    const tile = (color) => {
+      const t = esc(`${label()} · ${new Date().toLocaleDateString('ru-RU')}`);
+      const svg = `<svg xmlns='http://www.w3.org/2000/svg' width='460' height='240'><text x='230' y='120' text-anchor='middle' transform='rotate(-22 230 120)' font-family='ui-monospace,monospace' font-size='15' fill='${color}'>${t}</text></svg>`;
+      return `url("data:image/svg+xml,${encodeURIComponent(svg)}")`;
+    };
+    const run = (el) => { el.style.left = `${8 + Math.random() * 62}%`; el.style.top = `${8 + Math.random() * 78}%`; };
+    const paint = () => {
+      let wm = $('body > .wm');
+      if (!wm) { wm = document.createElement('div'); wm.className = 'wm'; wm.setAttribute('aria-hidden', 'true'); wm.innerHTML = '<span class="wrun"></span>'; document.body.appendChild(wm); }
+      wm.style.backgroundImage = tile('#0d141d');
+      $$('.vbox').forEach((b) => {
+        let v = $('.vwm', b);
+        if (!v) {
+          v = document.createElement('div'); v.className = 'vwm'; v.setAttribute('aria-hidden', 'true'); v.innerHTML = '<span class="wrun"></span>'; b.appendChild(v);
+          if (document.fullscreenEnabled && $('iframe, video', b)) {
+            const fs = document.createElement('button'); fs.className = 'vfs'; fs.type = 'button'; fs.textContent = 'На весь экран';
+            fs.addEventListener('click', () => (document.fullscreenElement ? document.exitFullscreen() : b.requestFullscreen()).catch(() => {}));
+            b.appendChild(fs);
+          }
+        }
+        v.style.backgroundImage = tile('#ffffff');
+      });
+      $$('.wrun').forEach((r) => { if (!r.textContent) { r.textContent = label(); run(r); } else r.textContent = label(); });
+    };
+    paint();
+    setInterval(() => $$('.wrun').forEach(run), 6000);
+    // если знак убрали через инструменты разработчика — возвращаем его
+    new MutationObserver(() => { if (!$('body > .wm') || $$('.vbox').some((b) => !$('.vwm', b))) paint(); }).observe(document.body, { childList: true, subtree: true });
+    call('/api/me').then((r) => { Object.assign(me, { name: r.name || me.name, uid: r.uid || '', un: r.un || '' }); store.set('me', { name: me.name, uid: me.uid, un: me.un }); paint(); }).catch(() => {});
+
+    // окно не активно (переключился в другую программу, открыл запись экрана) — материалы скрываются
+    const shield = (on) => document.documentElement.classList.toggle('shield', on);
+    document.addEventListener('visibilitychange', () => shield(document.hidden));
+    addEventListener('blur', () => setTimeout(() => { const a = document.activeElement; if (!(a && a.tagName === 'IFRAME')) shield(true); }, 0));
+    addEventListener('focus', () => shield(false));
+    const field = (t) => t && t.closest && t.closest('input, textarea, [contenteditable]');
+    ['contextmenu', 'copy', 'cut', 'dragstart', 'selectstart'].forEach((ev) => document.addEventListener(ev, (e) => { if (!field(e.target)) e.preventDefault(); }));
+    document.addEventListener('keydown', (e) => {
+      const k = (e.key || '').toLowerCase(), mod = e.ctrlKey || e.metaKey;
+      if (k === 'printscreen') { shield(true); setTimeout(() => shield(false), 1500); try { navigator.clipboard.writeText(''); } catch (x) {} }
+      if ((mod && ['s', 'p', 'u'].includes(k)) || (mod && e.shiftKey && ['i', 'j', 'c', '3', '4', '5', 's'].includes(k)) || k === 'f12') { e.preventDefault(); if (mod && e.shiftKey) { shield(true); setTimeout(() => shield(false), 1500); } }
+    });
+    document.addEventListener('keyup', (e) => { if ((e.key || '').toLowerCase() === 'printscreen') { shield(true); setTimeout(() => shield(false), 1500); try { navigator.clipboard.writeText(''); } catch (x) {} } });
+  }
+
   /* ---------- главная ---------- */
+  if (!locked) document.querySelectorAll('.empty.load').forEach((el) => {
+    const d = document.createElement('div'); d.innerHTML = loader(el.textContent.trim());
+    d.firstElementChild.style.cssText += el.style.cssText; el.replaceWith(d.firstElementChild);
+  });
   if (page === 'index' && !locked) {
+    $('#home-tracks').innerHTML = loader('Загружаем направления…', 'wide');
     Promise.all([load('news'), load('tracks')]).then(([news, T]) => {
       const done = doneSet(), total = stepsTotal(T), n = T.reduce((a, t) => a + tDone(t, done), 0);
       const last = store.get('last', null);
@@ -372,7 +447,7 @@
               <div><span class="kick mono">шаг ${esc(s.num)} · ${esc(t.title)}</span><h1>${esc(s.title)}</h1></div>
               <div class="lbtns">${favBtn(key, 'fbtn')}<button class="dbtn ${isDone ? 'is' : ''}" type="button" aria-pressed="${isDone}" title="${isDone ? 'Снять отметку' : 'Отметить пройденным'}">✓</button></div>
             </div>
-            <div class="vbox">${v ? player(v) : `<div class="vsoon"><svg class="px" viewBox="0 0 9 9">${starRects()}</svg><b>Видео скоро появится</b><span class="mono">шаг ${esc(s.num)}</span></div>`}</div>
+            <div class="vbox">${v ? loader('Загружаем видео…', 'dark') + player(v) : `<div class="vsoon"><svg class="px" viewBox="0 0 9 9">${starRects()}</svg><b>Видео скоро появится</b><span class="mono">шаг ${esc(s.num)}</span></div>`}</div>
             <div class="tcs"><h3>Таймкоды</h3>${tcs.length
               ? `<ol>${tcs.map((c) => `<li><button type="button" data-s="${c.s}" ${v ? '' : 'disabled'}><span class="mono">${esc(c.t)}</span><span>${esc(c.label)}</span></button></li>`).join('')}</ol>`
               : '<p>Появятся вместе с видео.</p>'}</div>
